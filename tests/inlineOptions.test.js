@@ -23,3 +23,15 @@ test('a separate answer key fills in Ans lines by question number', () => {
   assert.deepEqual(errors, [])
   assert.deepEqual(questions.map(q => q.answer), ['C', 'B'])
 })
+
+test('text like "and d." inside an option is not taken for the next option', () => {
+  const { questions } = parseQuestions('1. Pick\n(a) Only a\n(b) Only b\n(c) Only a and d. Both are true\n(d) None\nAns: C')
+  assert.equal(questions[0].option_c, 'Only a and d. Both are true')
+  assert.equal(questions[0].option_d, 'None')
+})
+test('B) and B. style inline options still split', () => {
+  const a = parseQuestions('1. Q\nA) one B) two\nC) three D) four\nAns: B').questions[0]
+  assert.deepEqual([a.option_a, a.option_b, a.option_c, a.option_d], ['one', 'two', 'three', 'four'])
+  const b = parseQuestions('1. Q\nA. one B. two\nC. three D. four\nAns: B').questions[0]
+  assert.deepEqual([b.option_a, b.option_b, b.option_c, b.option_d], ['one', 'two', 'three', 'four'])
+})

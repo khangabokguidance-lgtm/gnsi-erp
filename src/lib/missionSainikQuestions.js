@@ -30,12 +30,15 @@ export function parseQuestions(text) {
       push(); cur = { question: m[1].trim(), option_a: '', option_b: '', option_c: '', option_d: '', answer: '', explanation: '', topic: '', difficulty: null, ...(passage ? { passage } : {}) }; field = 'question'; continue
     }
     if (!cur) { if (field === 'passage' && !/^end\s*passage/i.test(ln)) passage = (passage + ' ' + ln).trim(); continue }
-    if ((m = ln.match(/^\(?([A-D])\s*[.):]\s*(.*)$/i))) {
-      // Several options on one line: "(a) Freezing (b) Condensation" — split at the next letter in sequence only.
-      let letter = m[1].toLowerCase(), rest = m[2]
+    if ((m = ln.match(/^(\()?([A-D])\s*([.):])\s*(.*)$/i))) {
+      // Several options on one line: "(a) Freezing (b) Condensation". The next marker must be the next letter in sequence AND
+      // written the same way as the first ("(b)" after "(a)", "B)" after "A)", "B." after "A."), so text like "and d. both" is not split.
+      const paren = !!m[1], punct = m[3].replace(/[.)]/, c => '\\' + c)
+      let letter = m[2].toLowerCase(), rest = m[4]
       for (;;) {
         const next = String.fromCharCode(letter.charCodeAt(0) + 1)
-        const cut = next <= 'd' ? rest.search(new RegExp('\\s+\\(?' + next + '\\s*[.):]\\s*\\S', 'i')) : -1
+        const re = paren ? new RegExp('\\s+\\(' + next + '\\)\\s*\\S', 'i') : new RegExp('\\s+' + next + punct + '\\s*\\S', 'i')
+        const cut = next <= 'd' ? rest.search(re) : -1
         if (cut < 0) break
         cur['option_' + letter] = rest.slice(0, cut).trim()
         rest = rest.slice(cut).trim().replace(/^\(?[A-D]\s*[.):]\s*/i, '')

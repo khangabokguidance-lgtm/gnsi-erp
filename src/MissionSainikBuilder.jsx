@@ -446,15 +446,16 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${brandCss}${previewCss}</style></head><body>${brand.watermark?.trim() ? `<div class="wm">${esc(brand.watermark.trim())}</div>` : ''}${brand.footer?.trim() ? `<div class="ftr">${esc(brand.footer.trim())}</div>` : ''}${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(cfg.name).toUpperCase()} TEST (MODEL SET) ●● MISSION SAINIK 2027</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
   const docTitle = (t, key) => `${cfg.noun === 'Set' ? 'Practice Set ' + t : cfg.prefix + '-' + String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
   const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
+  const keyDenied = key => { if (key && !isAdmin) { setMsg('🔒 Only an admin can print or export the answer key of a whole test.'); return true } return false }
   const printDoc = (t, key) => {
-    if (!ready0(t)) return
+    if (keyDenied(key) || !ready0(t)) return
     audit(key ? 'print_key' : 'print_paper', `${series}:${t}`, { verified: live(t).every(x => signoff(t, x.label)), sets: ver.sets, shuffled: ver.shuffleQ || ver.shuffleOpts })
     const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
     w.document.write(shell(allBodies(t, key), docTitle(t, key), true)); w.document.close()
   }
-  const previewDoc = (t, key) => { if (!ready0(t)) return; setPreview({ html: shell(allBodies(t, key), docTitle(t, key), false), title: docTitle(t, key) }) }
+  const previewDoc = (t, key) => { if (keyDenied(key) || !ready0(t)) return; setPreview({ html: shell(allBodies(t, key), docTitle(t, key), false), title: docTitle(t, key) }) }
   const exportWord = (t, key) => {
-    if (!ready0(t)) return
+    if (keyDenied(key) || !ready0(t)) return
     setMathStacked(false)
     let html
     try { html = wordWrap(`<style>${ver.layout === 'book' ? bookCss.replace(/@page\{[\s\S]*?\}\}/, '') : docCss}${brandCss.replace(/\.wm\{[^}]*\}|\.ftr\{[^}]*\}/g, '')}</style>` + allBodies(t, key).map(b => `<div style="page-break-after:always">${b}</div>`).join(''), docTitle(t, key))
@@ -469,13 +470,13 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const combinedDoc = list => {
     const tests = list.map(t => {
       const secs = live(t).map(x => {
-        const items = (byVersion ? get(t, x.label) : usedQuestions(get(t, x.label), x.q)).map((q, i) => ({ ...q, no: startOf(x.label) + i }))
+        const items = (byVersion ? flavourItems(get(t, x.label), x.q, 0) : usedQuestions(get(t, x.label), x.q)).map((q, i) => ({ ...q, no: startOf(x.label) + i }))
         const so = signoff(t, x.label)
         return { label: x.label, q: x.q, from: startOf(x.label), items, setters: settersOf(t, x.label), uploaders: [...new Set(get(t, x.label).map(q => q.uploaded_by).filter(Boolean))], verifier: verifiersOf(t, x.label).join(', '), signoff: so ? { verified_by: so.verified_by } : null, openNotes: openNotes(t, x.label) }
       })
       return { id: tid(t), date: dateOf(t) ? fmtShort(dateOf(t)) : '', sections: secs, checks: paperHealth(secs.map(x => ({ label: x.label, q: x.q, items: x.items })), qs, t).checks }
     })
-    return combinedHtml({ inst: instName, title: `${cfg.name} · combined paper (all subjects)`, tests, preparedBy: currentUser?.name || '', preparedAt: new Date().toLocaleString('en-GB'), esc, math: mathToHtml })
+    return combinedHtml({ inst: instName, title: `${cfg.name} · combined paper (all subjects)`, tests, preparedBy: currentUser?.name || '', preparedAt: new Date().toLocaleString('en-GB'), esc, math: mathToHtml, extraCss: MATH_CSS + '.oi{max-height:70px}' })
   }
   const combinedList = all => { const l = all ? combinedTests() : (mayCombine() ? [testNo] : []); if (!l.length) setMsg('🔒 Only an admin can build the combined paper.'); return l }
   const previewCombined = all => {
@@ -598,7 +599,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   // scrollIntoView on every render pulled the whole page back up while scrolling on a phone (the Build tab "would not scroll").
   useEffect(() => {
     const chip = document.querySelector('.msb .msb-chip.on'), strip = chip?.parentElement
-    if (strip) strip.scrollLeft = Math.max(0, chip.offsetLeft - (strip.clientWidth - chip.offsetWidth) / 2)
+    if (strip) { const c = chip.getBoundingClientRect(), r = strip.getBoundingClientRect(); strip.scrollLeft = Math.max(0, strip.scrollLeft + (c.left - r.left) - (strip.clientWidth - c.width) / 2) }
   }, [testNo, series, isMobile])
   const secStatus = (t, s) => { if (byVersion) return flavourStatus(get(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
   const col = st => (st === 'ok' ? PX.ok : st === 'part' ? PX.warn : PX.faint || '#9aa5b8')
@@ -667,7 +668,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>
 
       <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isAdmin && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isAdmin && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button>{isAdmin && <button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button>}</span>}>
         {isMobile && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <button type="button" className="px-btn ghost" style={{ flex: 1 }} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)}>‹ Previous</button>
@@ -785,9 +786,9 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
           <button className="px-hbtn" onClick={() => previewDoc(testNo, false)}>👁 Preview paper</button>
-          <button className="px-hbtn" onClick={() => previewDoc(testNo, true)}>👁 Preview key</button>
+          {isAdmin && <button className="px-hbtn" onClick={() => previewDoc(testNo, true)}>👁 Preview key</button>}
           <button className="px-hbtn" onClick={() => exportWord(testNo, false)}>📝 Word paper</button>
-          <button className="px-hbtn" onClick={() => exportWord(testNo, true)}>📝 Word key</button>
+          {isAdmin && <button className="px-hbtn" onClick={() => exportWord(testNo, true)}>📝 Word key</button>}
           <button className="px-hbtn" onClick={() => printOmr(testNo)}>⭕ OMR sheet</button>
           {mayCombine() && <>
             <button className="px-hbtn" title="All subjects of this test in one file, with answers and sign-off status — admin only" onClick={() => previewCombined(false)}>🧩 Combined paper (verify)</button>

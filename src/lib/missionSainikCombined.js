@@ -3,8 +3,6 @@
 //
 // Who may build it: admins only (it holds every subject's answers). Staff keep the normal per-section view.
 
-export const peopleOfTest = sections => [...new Set((sections || []).flatMap(s => [...(s.setters || []), ...(s.verifiers || [])]).map(x => String(x || '').trim()).filter(Boolean))]
-
 export const canBuildCombined = ({ isAdmin }) => !!isAdmin
 export const testsAllowed = ({ isAdmin, testNos }) => (isAdmin ? [...testNos] : [])
 
@@ -20,7 +18,7 @@ table{width:100%;border-collapse:collapse;margin:6px 0 10px}td,th{border:1px sol
 .empty{color:#8a93a6;font-style:italic;border:1px dashed #c9cfda;padding:5px;margin:4px 0}.conf{margin-top:12px;font-size:10.5px;color:#a00;text-align:center}`
 
 // test: { id, date, sections: [{label, q, from, items, setters, uploaders, verifier, signoff:{verified_by,verified_at}|null, openNotes}], checks: [{ok,text}] }
-export function combinedHtml({ inst = '', title = 'Combined paper', tests = [], preparedBy = '', preparedAt = '', esc, math = x => x }) {
+export function combinedHtml({ inst = '', title = 'Combined paper', tests = [], preparedBy = '', preparedAt = '', esc, math = x => x, extraCss = '' }) {
   const e = esc || (s => String(s ?? ''))
   const body = tests.map(t => {
     const secs = t.sections || []
@@ -37,5 +35,5 @@ export function combinedHtml({ inst = '', title = 'Combined paper', tests = [], 
     }).join('')}`).join('')
     return `<div class="test"><div class="hd"><h2>${e(t.id)}${t.date ? ' · ' + e(t.date) : ''} — all subjects</h2><div class="sub">${have} of ${need} questions uploaded · ${unverified ? `<span class="bad">${unverified} of ${secs.length} section(s) not verified</span>` : '<span class="good">every section verified</span>'}</div></div>${summary}${issueHtml}${qs}</div>`
   }).join('')
-  return `<h1>${e(inst)}</h1><div class="sub">${e(title)} — for verification${preparedBy ? ' · prepared by ' + e(preparedBy) : ''}${preparedAt ? ' · ' + e(preparedAt) : ''}</div><style>${CSS}</style>${body}<div class="conf">CONFIDENTIAL — contains answers. For admins only. Do not share.</div>`
+  return `<h1>${e(inst)}</h1><div class="sub">${e(title)} — for verification${preparedBy ? ' · prepared by ' + e(preparedBy) : ''}${preparedAt ? ' · ' + e(preparedAt) : ''}</div><style>${CSS}${extraCss}</style>${body}<div class="conf">CONFIDENTIAL — contains answers. For admins only. Do not share.</div>`
 }

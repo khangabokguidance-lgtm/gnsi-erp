@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { combinedHtml, canBuildCombined, testsAllowed, peopleOfTest } from '../src/lib/missionSainikCombined.js'
+import { combinedHtml, canBuildCombined, testsAllowed } from '../src/lib/missionSainikCombined.js'
 
 test('only an admin may build the combined paper', () => {
   assert.equal(canBuildCombined({ isAdmin: true }), true)
@@ -11,7 +11,6 @@ test('only an admin may build the combined paper', () => {
 test('testsAllowed gives every test to an admin and none to anyone else', () => {
   assert.deepEqual(testsAllowed({ isAdmin: true, testNos: [1, 2, 3] }), [1, 2, 3])
   assert.deepEqual(testsAllowed({ isAdmin: false, testNos: [1, 2, 3] }), [])
-  assert.deepEqual(peopleOfTest([{ setters: ['Anil'], verifiers: ['Meena'] }]).sort(), ['Anil', 'Meena'])
 })
 
 test('combined document lists every subject with answers, status and problems', () => {
@@ -21,4 +20,8 @@ test('combined document lists every subject with answers, status and problems', 
     { label: 'Science', q: 25, from: 26, items: [], setters: ['Sita'], uploaders: [], verifier: '', signoff: null, openNotes: 2 }],
   checks: [{ ok: false, text: '1 of 50 questions uploaded' }] }] })
   for (const w of ['PMT-01', 'Maths', 'Science', 'b1 ✔', 'Ans: B', 'because', 'Verified', 'Not verified', '2 open note', 'No questions uploaded yet', '1 of 50 questions uploaded', 'CONFIDENTIAL']) assert.ok(html.includes(w), w)
+})
+
+test('extra CSS (maths styling) is included in the document', () => {
+  assert.ok(combinedHtml({ tests: [], extraCss: '.frac{display:inline-block}' }).includes('.frac{display:inline-block}'))
 })
