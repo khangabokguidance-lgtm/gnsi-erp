@@ -294,6 +294,17 @@ html{scroll-behavior:smooth}
 .msx-dd .msx-badge{position:static;margin-left:auto}
 @media (min-width:900px){.msx-menubar{display:flex}}
 @media print{.msx-menubar{display:none!important}}
+
+/* ── Search inside the menu bar (the side menu is gone) ── */
+.msx-mbfind{margin-left:auto;align-self:center;width:300px;position:relative}
+.msx-mbfind .msx-find{margin:0}
+.msx-mbfind .msx-find input{height:36px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);color:#fff}
+.msx-mbfind .msx-find input::placeholder{color:#c3d0ea}
+.msx-mbfind .msx-find input:focus{background:#fff;color:var(--ink);border-color:var(--gold)}
+.msx-mbfind .msx-find .ic{color:#c3d0ea}.msx-mbfind .msx-find input:focus~.ic{color:var(--sub)}
+.msx-mbfind .msx-find kbd{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.3);color:#e4ecfa}
+.msx-mbres{position:absolute;right:0;top:calc(100% + 8px);width:400px;max-height:70vh;overflow:auto;padding:8px;background:#fff;border:1px solid var(--line);border-top:3px solid var(--gold);border-radius:0 0 14px 14px;box-shadow:0 24px 48px -16px rgba(11,28,54,.5);z-index:60}
+.msx-find input[type=search]::-webkit-search-cancel-button,.msx-find input[type=search]::-webkit-search-decoration{-webkit-appearance:none;appearance:none;display:none}
 `
 
 export function Confetti({ show }) {
@@ -310,14 +321,11 @@ export function Confetti({ show }) {
 
 export default function MissionSainikShell({ navGroups, active, onChange, title, onBack, actions = [], badges = {}, isAdmin, fab, msg, confetti, children }) {
   const [sheet, setSheet] = useState(false)
-  const [slim, setSlim] = useState(() => store.get('msx-rail-slim', typeof window !== 'undefined' && window.innerWidth < 1180))
-  const slimRef = useRef(slim); slimRef.current = slim
   const rootRef = useRef(null)
   const [wide, setWide] = useState(() => store.get('msx-wide', false))
   const [full, setFull] = useState(false)
   useEffect(() => { const f = () => setFull(!!document.fullscreenElement); document.addEventListener('fullscreenchange', f); return () => document.removeEventListener('fullscreenchange', f) }, [])
   const toggleFull = () => { try { if (document.fullscreenElement) document.exitFullscreen(); else if (rootRef.current?.requestFullscreen) { rootRef.current.requestFullscreen(); setWide(true) } else setWide(w => { store.set('msx-wide', !w); return !w }) } catch { /* not allowed */ } }
-  const toggleSlim = () => setSlim(v => { store.set('msx-rail-slim', !v); return !v })
   const [q, setQ] = useState('')
   const [disp, setDisp] = useState(false)
   const [menu, setMenu] = useState(null)   // title of the open top-menu group
@@ -350,7 +358,7 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
   const [recent, setRecent] = useState(() => store.get('msx-recent', []))
   const railFind = useRef(null), sheetFind = useRef(null)
   const togglePin = id => setPins(p => { const n = p.includes(id) ? p.filter(x => x !== id) : [...p, id]; store.set('msx-pins', n); return n })
-  const openFinder = () => { if (window.matchMedia('(min-width:900px)').matches && !slimRef.current) railFind.current?.focus(); else if (window.matchMedia('(min-width:900px)').matches) { setSlim(false); store.set('msx-rail-slim', false); setTimeout(() => railFind.current?.focus(), 220) } else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) } }
+  const openFinder = () => { if (window.matchMedia('(min-width:900px)').matches) railFind.current?.focus(); else { setSheet(true); setTimeout(() => sheetFind.current?.focus(), 60) } }
   // "/" or Ctrl+K jumps to search: the side menu on desktop, the All-sections sheet on phones.
   useEffect(() => {
     const k = e => {
@@ -463,6 +471,7 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
                 </div>)}
             </div>)
         })}
+        <div className="msx-mbfind">{finder(railFind, 'Find a section…')}{needle && <div className="msx-mbres">{resultList}</div>}</div>
       </nav>
       </div>
 
@@ -478,32 +487,6 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
       </nav>
 
       <div className="msx-body">
-        <div className="msx-slot">
-          <nav className={'msx-rail' + (slim ? ' slim' : '')} aria-label="Mission Sainik sections">
-            <button type="button" className="msx-tap msx-rail-tg" onClick={toggleSlim} aria-label={slim ? 'Expand menu' : 'Collapse menu'} title={slim ? 'Expand menu' : 'Collapse menu'}>
-              <Icon name={slim ? 'menu' : 'back'} size={16} /><span className="tgl">{slim ? '' : 'Collapse menu'}</span>
-            </button>
-            {finder(railFind, 'Find a section…')}
-            {needle && !slim ? resultList : (
-              <>
-                {pinned.length > 0 && <div><h4>Pinned</h4>
-                  {pinned.map(x => (
-                    <button key={x.id} className={'msx-tap msx-ri' + (active === x.id ? ' on' : '')} aria-current={active === x.id ? 'page' : undefined} onClick={() => go(x.id)} title={x.label}>
-                      <Ico id={x.id} fallback={x.ic} /><span className="msx-lbl">{x.label}</span>{pinBtn(x.id, x.label)}
-                    </button>))}
-                </div>}
-                {groups.map(g => (
-                  <div key={g.title}><h4>{g.title}</h4>
-                    {g.items.map(([id, ic, label]) => (
-                      <button key={id} className={'msx-tap msx-ri' + (active === id ? ' on' : '')} aria-current={active === id ? 'page' : undefined} onClick={() => go(id)} title={label}>
-                        <Ico id={id} fallback={ic} /><span className="msx-lbl">{label}</span>{badges[id] ? <span className="msx-badge" style={{ position: 'static', marginLeft: 'auto' }}>{badges[id]}</span> : null}
-                        {pinBtn(id, label, badges[id] ? { marginLeft: 6 } : undefined)}
-                      </button>))}
-                  </div>))}
-              </>
-            )}
-          </nav>
-        </div>
         <main id="msx-main" tabIndex={-1} className={'msx-main' + (fab ? ' has-fab' : '')} key={active} style={{ outline: 'none' }}>
           {active !== 'overview' && (
             <div className="msx-ph">
