@@ -45,7 +45,7 @@ const CSS = `
 .msx-util a.lnk{color:#e6edf9;text-decoration:none;font-weight:600}.msx-util a.lnk:hover{text-decoration:underline}
 
 /* ── Header: emblem + programme name ── */
-.msx-top{position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:14px;min-height:72px;padding:8px 20px;background:#fff;color:var(--navy);border-bottom:3px solid var(--gold);box-shadow:0 2px 10px rgba(11,28,54,.08)}
+.msx-top{position:relative;display:flex;align-items:center;gap:14px;min-height:72px;padding:8px 20px;background:#fff;color:var(--navy);border-bottom:3px solid var(--gold);box-shadow:0 2px 10px rgba(11,28,54,.08)}
 .msx-brand{display:flex;align-items:center;gap:13px;min-width:0;flex:1;text-align:left}
 .msx-brand .t{min-width:0}.msx-brand h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.01em;line-height:1.15;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .msx-brand small{display:block;margin-top:3px;font-size:12px;font-weight:600;color:var(--sub);letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -62,7 +62,7 @@ const CSS = `
 
 /* ── Layout ── */
 .msx-body{display:flex;max-width:1440px;margin:0 auto;align-items:flex-start}
-.msx-slot{display:none;flex:none;position:sticky;top:75px;align-self:flex-start;height:calc(100vh - 75px);z-index:20}
+.msx-slot{display:none;flex:none;position:sticky;top:var(--msx-top,121px);align-self:flex-start;height:calc(100vh - var(--msx-top,121px));z-index:20}
 .msx-rail{display:block;width:268px;height:100%;padding:14px 12px 40px;overflow:auto;background:#fff;border-right:1px solid var(--line);transition:width .2s ease}
 .msx-rail h4{margin:16px 8px 6px;padding-bottom:6px;font-size:11.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--navy);border-bottom:2px solid var(--tint)}
 .msx-ri{display:flex;align-items:center;gap:12px;width:100%;min-height:42px;padding:9px 12px;border-radius:6px;font-size:14px;font-weight:600;color:#26354f;text-align:left}
@@ -231,7 +231,7 @@ html{scroll-behavior:smooth}
   background:radial-gradient(900px 380px at 85% -6%,rgba(184,146,58,.10),transparent 70%),radial-gradient(700px 400px at -5% 30%,rgba(29,79,145,.07),transparent 70%),linear-gradient(180deg,#f4f6fa,#eaeef5)}
 .msx-util{background:linear-gradient(180deg,#07142a,#0d2247);border-bottom:1px solid rgba(230,195,94,.35);letter-spacing:.015em}
 .msx-util .org b{color:#f1dca0}
-.msx-top{position:sticky;border-bottom:0;background:linear-gradient(180deg,#fff,#fbfcfe);box-shadow:0 8px 24px -14px rgba(11,28,54,.35)}
+.msx-top{position:relative;border-bottom:0;background:linear-gradient(180deg,#fff,#fbfcfe);box-shadow:0 8px 24px -14px rgba(11,28,54,.35)}
 .msx-top::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--goldgrad)}
 .msx-brand svg{filter:drop-shadow(0 3px 5px rgba(11,28,54,.35))}
 .msx-brand h1{font-family:var(--serif);font-size:26px;font-weight:700;letter-spacing:.005em;background:linear-gradient(180deg,#0e2a55,#1c4a8f);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
@@ -276,6 +276,24 @@ html{scroll-behavior:smooth}
 .msx-sheet{border-radius:22px 22px 0 0}.msx-bottom{border-top:0;box-shadow:0 -10px 30px -12px rgba(14,32,63,.25)}
 .msx-disp{border-radius:14px}
 @media (max-width:700px){.msx-brand h1{font-size:21px}.msx-brand small{font-size:10px;letter-spacing:.08em}.msx-ph h2{font-size:26px}.msx-main .px-card{border-radius:14px}.msx-main .px-card-t{font-size:17px}}
+
+/* ── Top menu bar with dropdown groups (desktop) ── */
+.msx-stickytop{position:sticky;top:0;z-index:30}
+.msx-menubar{display:none;position:relative;align-items:stretch;gap:2px;padding:0 20px;min-height:46px;background:linear-gradient(180deg,#14336a,#0d2247);border-bottom:1px solid rgba(230,195,94,.4);box-shadow:0 10px 24px -16px rgba(11,28,54,.7)}
+.msx-mb{position:relative;display:flex}
+.msx-mb>button{display:flex;align-items:center;gap:8px;height:46px;padding:0 16px;color:#e4ecfa;font-size:14px;font-weight:600;letter-spacing:.01em;border-bottom:3px solid transparent;background:transparent}
+.msx-mb>button:hover,.msx-mb.open>button{background:rgba(255,255,255,.1);color:#fff}
+.msx-mb.cur>button{color:#fff;border-bottom-color:var(--gold);font-weight:700}
+.msx-mb .car{transition:transform .2s;opacity:.8}.msx-mb.open .car{transform:rotate(180deg)}
+.msx-mb .dot{min-width:17px;height:17px;border-radius:9px;background:var(--bad);color:#fff;font-size:10px;font-weight:800;display:inline-flex;align-items:center;justify-content:center;padding:0 4px}
+.msx-dd{position:absolute;left:0;top:100%;z-index:60;min-width:340px;padding:8px;background:#fff;border:1px solid var(--line);border-top:3px solid var(--gold);border-radius:0 0 14px 14px;box-shadow:0 24px 48px -16px rgba(11,28,54,.5);animation:msx-fade .15s both}
+.msx-dd button{display:flex;align-items:center;gap:13px;width:100%;padding:10px 12px;border-radius:10px;text-align:left;color:var(--ink)}
+.msx-dd button:hover{background:#f3f6fb}.msx-dd button.on{background:var(--tint);box-shadow:inset 3px 0 0 var(--gold)}
+.msx-dd .i{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,#eaf0fa,#dde7f6);color:var(--navy);display:flex;align-items:center;justify-content:center;flex:none}
+.msx-dd b{display:block;font-size:14px}.msx-dd small{display:block;font-size:12px;color:var(--sub);margin-top:1px;line-height:1.35}
+.msx-dd .msx-badge{position:static;margin-left:auto}
+@media (min-width:900px){.msx-menubar{display:flex}}
+@media print{.msx-menubar{display:none!important}}
 `
 
 export function Confetti({ show }) {
@@ -302,6 +320,21 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
   const toggleSlim = () => setSlim(v => { store.set('msx-rail-slim', !v); return !v })
   const [q, setQ] = useState('')
   const [disp, setDisp] = useState(false)
+  const [menu, setMenu] = useState(null)   // title of the open top-menu group
+  const topRef = useRef(null), mbRef = useRef(null)
+  // Keep the side menu's sticky offset equal to the real height of the header + menu bar.
+  useEffect(() => {
+    const el = topRef.current, root = rootRef.current; if (!el || !root || typeof ResizeObserver === 'undefined') return undefined
+    const ro = new ResizeObserver(() => root.style.setProperty('--msx-top', el.offsetHeight + 'px')); ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  useEffect(() => {
+    if (!menu) return undefined
+    const away = e => { if (!mbRef.current?.contains(e.target)) setMenu(null) }
+    const esc = e => e.key === 'Escape' && setMenu(null)
+    document.addEventListener('mousedown', away); window.addEventListener('keydown', esc)
+    return () => { document.removeEventListener('mousedown', away); window.removeEventListener('keydown', esc) }
+  }, [menu])
   const [prefs, setPrefs] = useState(() => ({ size: 'md', theme: 'light', comfort: 'normal', ...store.get('msx-prefs', {}) }))
   const setPref = patch => setPrefs(p => { const n = { ...p, ...patch }; store.set('msx-prefs', n); return n })
   useNoPullToRefresh()   // dragging down on a phone no longer reloads the page and loses unsaved work
@@ -336,7 +369,7 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
   })
   const go = id => {
     try { navigator.vibrate?.(8) } catch { /* not supported */ }
-    setSheet(false); setQ(''); onChange(id); window.scrollTo?.({ top: 0 })
+    setSheet(false); setQ(''); setMenu(null); onChange(id); window.scrollTo?.({ top: 0 })
     setRecent(r => { const n = [id, ...r.filter(x => x !== id)].slice(0, 5); store.set('msx-recent', n); return n })
   }
   const groups = (navGroups || NAV_GROUPS).map(g => ({ ...g, items: g.items.filter(i => i[0] !== 'admin' || isAdmin) }))
@@ -395,6 +428,7 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
         <button type="button" aria-label={full ? 'Exit full screen' : 'Full screen'} title={full ? 'Exit full screen' : 'Full screen — hide the browser and ERP header'} onClick={toggleFull}><Icon name={full ? 'shrink' : 'expand'} size={16} /></button>
       </div>
 
+      <div className="msx-stickytop" ref={topRef}>
       <header className="msx-top">
         <div className="msx-brand">
           {onBack && <button className="msx-tap msx-act ic" style={{ border: 0 }} aria-label="Back to Home" title="Back to Home" onClick={onBack}><Icon name="back" size={22} /></button>}
@@ -409,6 +443,28 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
             </button>))}
         </div>
       </header>
+      <nav className="msx-menubar" aria-label="Main menu" ref={mbRef}>
+        <div className={'msx-mb' + (active === 'overview' ? ' cur' : '')}><button type="button" className="msx-tap" onClick={() => go('overview')}><Icon name="overview" size={17} />Home</button></div>
+        {groups.filter(g => !(g.items.length === 1 && g.items[0][0] === 'overview')).map(g => {
+          const items = g.items.filter(i => i[0] !== 'overview'); if (!items.length) return null
+          const open = menu === g.title, here = items.some(i => i[0] === active), n = items.reduce((a, i) => a + (Number(badges[i[0]]) || 0), 0)
+          return (
+            <div key={g.title} className={'msx-mb' + (open ? ' open' : '') + (here ? ' cur' : '')} onMouseEnter={() => { if (menu && !open) setMenu(g.title) }}>
+              <button type="button" className="msx-tap" aria-haspopup="true" aria-expanded={open} onClick={() => setMenu(open ? null : g.title)}>
+                {g.title}{n > 0 && <span className="dot">{n}</span>}<span className="car"><Icon name="chev" size={14} style={{ transform: 'rotate(90deg)' }} /></span>
+              </button>
+              {open && (
+                <div className="msx-dd" role="menu">
+                  {items.map(([id, ic, label]) => (
+                    <button key={id} type="button" role="menuitem" className={'msx-tap' + (active === id ? ' on' : '')} onClick={() => go(id)}>
+                      <span className="i"><Ico id={id} fallback={ic} /></span><span style={{ minWidth: 0 }}><b>{label}</b>{HINTS[id] && <small>{HINTS[id]}</small>}</span>
+                      {badges[id] ? <span className="msx-badge">{badges[id]}</span> : null}
+                    </button>))}
+                </div>)}
+            </div>)
+        })}
+      </nav>
+      </div>
 
       <nav className="msx-crumbs" aria-label="Breadcrumb">
         <button type="button" className="msx-tap" onClick={() => go('overview')}>Home</button>
