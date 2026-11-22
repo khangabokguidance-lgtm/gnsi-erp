@@ -14,7 +14,6 @@ import QuestionEditor from './QuestionEditor'
 import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { Icon } from './MissionSainikIcons'
-import { settersOfRow } from './lib/missionSainikAllot'
 import { routePreMock, matchChapter, offPlan, planState } from './lib/missionSainikPlanRule'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
@@ -40,8 +39,8 @@ const CFG = {
     sections: DAILY_SECTIONS, duration: 'as notified', panel: 'practice',
   },
   practice: {
-    name: 'Practice Bank', prefix: 'Set', noun: 'Set', restart: true, noMarks: true, panel: 'practice',
-    tests: [1, 2, 3].map(no => ({ no, date: null })),
+    name: 'Practice Bank', prefix: 'PMT', noun: 'Test', perTest: true, restart: true, noMarks: true, panel: 'practice',
+    tests: TESTS.map(t => ({ no: t.no, date: null, plan: t.date })),   // one practice set for EVERY Pre Mock test, on that test's planned chapter (no embargo: `plan` is only shown)
     sections: SUBJECTS.map(x => ({ label: x.label, short: x.short, q: 25, marks: 0, key: x.key, sets: PRACTICE_PANEL[x.key].sets })),
     duration: '',
   },
@@ -68,7 +67,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const isMe = n => nameMatches(currentUser?.matchName || currentUser?.name, n)
   const [qs, setQs] = useState([])
   const [setup, setSetup] = useState(false)
-  const [testNo, setTestNo] = useState(() => startTest || (cfg.tests.find(t => t.date && today && t.date >= today)?.no ?? (today && cfg.tests.some(t => t.date) ? cfg.tests[cfg.tests.length - 1].no : 1)))   // opens on the present test: the next one not yet held
+  const [testNo, setTestNo] = useState(() => startTest || (cfg.tests.find(t => (t.date || t.plan) && today && (t.date || t.plan) >= today)?.no ?? (today && cfg.tests.some(t => t.date || t.plan) ? cfg.tests[cfg.tests.length - 1].no : 1)))   // opens on the present test: the next one not yet held
   const [showAll, setShowAll] = useState(false)
   const [showNotes, setShowNotes] = useState(false)   // review notes stay folded unless there are open notes
   const [lim, setLim] = useState({ k: '', n: 10 })   // questions listed before "Show more"   // false: only the present test is listed; true: every test
@@ -142,16 +141,10 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   }, [qs])
   const get = (t, s) => bySec[t + '|' + s] || []
   // The syllabus plan (Mission Sainik → Syllabus): the chapter(s) planned for this test and section. Pre Mock and Daily tests follow it.
-  const chaptersOf = (t, label) => ((series === 'pre' || series === 'daily') && syllabus ? String(syllabus[t + '|' + label] || '').split(';').map(x => x.trim()).filter(Boolean) : [])
+  const chaptersOf = (t, label) => ((series === 'pre' || series === 'daily' || series === 'practice') && syllabus ? String(syllabus[t + '|' + label] || '').split(';').map(x => x.trim()).filter(Boolean) : [])
   // Pre Mock follows the Syllabus Plan for each test only, and holds exactly the section's 25 questions; extras go to the Practice bank.
-  const strictPlan = series === 'pre'
-  const practiceSetFor = label => {   // the uploading teacher's own practice set of this subject (Set 1 when none is allotted to them)
-    const key = cfg.sections.find(x => x.label === label)?.key, max = PRACTICE_PANEL[key]?.sets || 1
-    const same = (tasks || []).filter(r => r.kind === 'practice' && r.subject === label).sort((a, b) => a.id - b.id)
-    const mine = same.find(r => settersOfRow(r).some(isMe))
-    if (!mine) return 1
-    return mine.test_no > 0 ? Math.min(mine.test_no, max) : Math.min(Math.max(same.indexOf(mine) + 1, 1), max)
-  }
+  const chapterRule = series === 'pre' || series === 'practice'   // questions must be on the chapter the Syllabus Plan gives that test
+  const strictPlan = series === 'pre'                                // Pre Mock only: the paper holds exactly 25 per section; extras go to that test's practice set
   const [chapterPick, setChapterPick] = useState('')
   const avail = (t, s) => !s.sets || t <= s.sets                       // practice: not every subject has a 3rd set
   const live = t => cfg.sections.filter(s => avail(t, s))
@@ -174,6 +167,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const canUpload = (t, s) => (setterOnly ? !isLocked(t) && settersOf(t, s).some(isMe) : canEdit(t, s))
   // Embargo (admin setting): until the test date only the section's setter and admins can read questions / answers or print.
   const dateOf = t => cfg.tests.find(x => x.no === t)?.date
+  const planDate = t => cfg.tests.find(x => x.no === t)?.plan   // Practice: the date of the Pre Mock test it prepares for (shown only)
   const embargoed = (t, s) => !!embargo && !!dateOf(t) && !!today && today < dateOf(t) && !canEdit(t, s)
   const signoff = (t, s) => signoffs.find(x => x.test_no === t && x.section === s)
   // Verifier: a different person from the uploader (admins may always verify).
@@ -203,7 +197,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const clearSignoff = async (t, s) => { if (signoff(t, s)) await supabase.from('mission_sainik_signoffs').delete().eq('series', series).eq('test_no', t).eq('section', s) }
   const verify = async (t, s) => {
     if (!canVerify(t, s)) return setMsg('❌ A different panel member (not the uploader) must verify.')
-    if (strictPlan) {
+    if (chapterRule) {
       const pl = chaptersOf(t, s)
       if (planState(pl) === 'multi') return setMsg(`❌ ${tid(t)} · ${s} lists ${pl.length} chapters in the Syllabus Plan; keep just one before verifying.`)
       const off = offPlan(get(t, s), pl)
@@ -243,24 +237,24 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     if (dupes.length) { setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”.${list.length > 1 ? ' Remove them and upload again.' : ''}`); return false }
     const chs = chaptersOf(testNo, section), defTopic = chs.includes(chapterPick) ? chapterPick : chs.length === 1 ? chs[0] : ''   // a question without a topic gets the planned chapter
     let paperList = list.map(q => ({ ...q, topic: q.topic || defTopic || q.topic })), extra = []
-    if (strictPlan && planState(chs) === 'multi') { setMsg(`❌ ${tid(testNo)} · ${section} has ${chs.length} chapters in the Syllabus Plan. Every teacher must set the one same chapter, so an admin must keep just one (Mission Sainik → Syllabus).`); return false }
-    if (strictPlan) {
-      const r = routePreMock({ list, chapters: chs, defTopic, room: sec.q - have })
+    if (chapterRule && planState(chs) === 'multi') { setMsg(`❌ ${tid(testNo)} · ${section} has ${chs.length} chapters in the Syllabus Plan. Every teacher must set the one same chapter, so an admin must keep just one (Mission Sainik → Syllabus).`); return false }
+    if (chapterRule) {
+      const r = routePreMock({ list, chapters: chs, defTopic, room: strictPlan ? sec.q - have : Infinity })   // Practice has no 25-cap: only the chapter rule
       if (r.error) { setMsg(`❌ ${tid(testNo)} · ${section} follows the Syllabus Plan: ${r.planned.join(' / ')}. ${r.bad[0].topic ? `“${r.bad[0].topic}” is not planned for this test.` : 'Choose the chapter first.'}${r.bad.length > 1 ? ` (${r.bad.length} questions)` : ''}`); return false }
       paperList = r.paper; extra = r.extra
-      if (extra.length && list.length > 1 && !window.confirm(`${tid(testNo)} · ${section} has room for ${paperList.length} more (limit ${sec.q}).\n\nThe other ${extra.length} will be saved to the Practice bank (${section} · Set ${practiceSetFor(section)}), tagged with their chapter.\n\nContinue?`)) return false
+      if (extra.length && list.length > 1 && !window.confirm(`${tid(testNo)} · ${section} has room for ${paperList.length} more (limit ${sec.q}).\n\nThe other ${extra.length} will be saved to the practice set for ${tid(testNo)} (${section}), on the same chapter.\n\nContinue?`)) return false
+      if (!strictPlan && have + list.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + list.length}. Upload anyway?`)) return false
     } else if (have + list.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + list.length}. Upload anyway?`)) return false
     setBusy(true)
-    const practiceNo = practiceSetFor(section)
     const rows = paperList.map(q => ({ ...q, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
-    const xrows = extra.map(q => ({ ...q, series: 'practice', test_no: practiceNo, section, uploaded_by: currentUser?.name || '' }))
+    const xrows = extra.map(q => ({ ...q, series: 'practice', test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
     const { error } = await supabase.from(TABLE).insert([...rows, ...xrows])
     setBusy(false)
     if (error) { setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : '')); return false }
     if (clear) { setText(''); setCards([blankCard()]) }
-    const xTxt = xrows.length ? `${xrows.length === 1 ? '1 question' : xrows.length + ' questions'} saved to the Practice bank (${section} · Set ${practiceNo}${xrows[0].topic ? ' · ' + xrows[0].topic : ''})` : ''
+    const xTxt = xrows.length ? `${xrows.length === 1 ? '1 question' : xrows.length + ' questions'} saved to the practice set for ${tid(testNo)} (${section}${xrows[0].topic ? ' · ' + xrows[0].topic : ''})` : ''
     setMsg(rows.length ? `✅ ${rows.length === 1 ? 'Question' : rows.length + ' questions'} added to ${tid(testNo)} · ${section} · ${Math.min(have + rows.length, sec.q)} of ${sec.q}${xTxt ? ' — ' + xTxt : ''}` : `✅ ${tid(testNo)} · ${section} is full (${sec.q}). ${xTxt}`)
-    audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length, ...(xrows.length ? { to_practice: xrows.length, practice_set: practiceNo } : {}) })
+    audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length, ...(xrows.length ? { to_practice: xrows.length, practice_test: testNo } : {}) })
     await clearSignoff(testNo, section)
     await load()
     // Pre Mock: when the section is complete, mark the allotted task as submitted automatically.
@@ -306,7 +300,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     if (!['A', 'B', 'C', 'D'].includes(d.answer)) return setMsg('❌ Choose the correct answer.')
     const norm = x => x.toLowerCase().replace(/\s+/g, ' ').trim()
     if (get(d.test_no, d.section).some(q => q.id !== d.id && norm(q.question) === norm(d.question))) return setMsg('❌ Another question in this section has the same text.')
-    const planned = strictPlan ? chaptersOf(d.test_no, d.section) : []
+    const planned = chapterRule ? chaptersOf(d.test_no, d.section) : []
     if (planned.length && d.topic?.trim() && !matchChapter(planned, d.topic)) return setMsg(`❌ “${d.topic.trim()}” is not planned for this test. Use: ${planned.join(' / ')}`)
     const patch = { question: d.question.trim(), option_a: d.option_a.trim(), option_b: d.option_b.trim(), option_c: d.option_c.trim(), option_d: d.option_d.trim(), answer: d.answer, explanation: d.explanation?.trim() || null, topic: (planned.length && matchChapter(planned, d.topic)) || d.topic?.trim() || null, difficulty: d.difficulty || null }
     if ('passage' in d) patch.passage = d.passage?.trim() || null
@@ -319,7 +313,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   // Save one question from the full-screen editor (same rules as the old inline form).
   const saveQuestionPatch = async (q, patch) => {
     if (!canEdit(q.test_no, q.section)) { setMsg('❌ Only the section setter or an admin can edit this question.'); return false }
-    const planned = strictPlan && 'topic' in patch ? chaptersOf(q.test_no, q.section) : []
+    const planned = chapterRule && 'topic' in patch ? chaptersOf(q.test_no, q.section) : []
     if (planned.length && patch.topic && !matchChapter(planned, patch.topic)) { setMsg(`❌ “${patch.topic}” is not planned for this test. Use: ${planned.join(' / ')}`); return false }
     if (planned.length && patch.topic) patch = { ...patch, topic: matchChapter(planned, patch.topic) }
     const { error } = await supabase.from(TABLE).update(patch).eq('id', q.id)
@@ -425,7 +419,7 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
   const coverHtml = (t, key, setIdx) => {
     if (!brand.cover || key) return ''
     const secs = assemble(t, setIdx)
-    const id = cfg.noun === 'Set' ? `Practice Set ${t}` : `${cfg.prefix}-${String(t).padStart(2, '0')}`
+    const id = `${series === 'practice' ? 'Practice ' : ''}${cfg.prefix}-${String(t).padStart(2, '0')}`
     const date = cfg.tests.find(x => x.no === t)?.date
     const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
     const marks = secs.reduce((a, x) => a + x.q * x.marks, 0)
@@ -451,7 +445,7 @@ ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '
   const bookBody = (t, key, setIdx, first) => {
     const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
     const allVerified = live(t).every(x => signoff(t, x.label))
-    const id = cfg.noun === 'Set' ? `Practice Set ${t}` : `${cfg.prefix}-${String(t).padStart(2, '0')}`
+    const id = `${series === 'practice' ? 'Practice ' : ''}${cfg.prefix}-${String(t).padStart(2, '0')}`
     const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
     const date = cfg.tests.find(x => x.no === t)?.date
     const letter = i => String.fromCharCode(65 + i)
@@ -469,7 +463,7 @@ ${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(
   const docBody = (t, key, setIdx) => {
     const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
     const allVerified = live(t).every(x => signoff(t, x.label))
-    const id = cfg.noun === 'Set' ? `Practice Set ${t}` : `${cfg.prefix}-${String(t).padStart(2, '0')}`
+    const id = `${series === 'practice' ? 'Practice ' : ''}${cfg.prefix}-${String(t).padStart(2, '0')}`
     const date = cfg.tests.find(x => x.no === t)?.date
     const setTag = ver.sets > 1 ? ` · SET ${SET_LETTERS[setIdx]}` : ''
     const opts = q => (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(o => `<span>(${o.k}) ${mathToHtml(o.text)}</span>`).join('')
@@ -489,7 +483,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 .run{font:700 8.5pt ${F};text-align:center;letter-spacing:.04em;color:#222;border-bottom:.7pt solid #bbb;padding-bottom:2mm;margin-bottom:4mm}.pgno{font:800 9.5pt ${F};text-align:center;margin-top:6mm;color:#111}
 .empty{display:block;text-align:center;font-style:italic;color:#8a93a6;border:1pt dashed #c9cfda;border-radius:3pt;padding:5pt;margin:0 0 2.5mm;font-size:9.5pt}}@media print{.run,.pgno{display:none}}`
   const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${brandCss}${previewCss}</style></head><body>${brand.watermark?.trim() ? `<div class="wm">${esc(brand.watermark.trim())}</div>` : ''}${brand.footer?.trim() ? `<div class="ftr">${esc(brand.footer.trim())}</div>` : ''}${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(cfg.name).toUpperCase()} TEST (MODEL SET) ●● MISSION SAINIK 2027</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
-  const docTitle = (t, key) => `${cfg.noun === 'Set' ? 'Practice Set ' + t : cfg.prefix + '-' + String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
+  const docTitle = (t, key) => `${series === 'practice' ? 'Practice ' : ''}${cfg.prefix}-${String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
   const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
   const printDoc = (t, key) => {
     if (!ready0(t)) return
@@ -553,7 +547,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       if (!cfg.tests.some(x => x.no === t) || !cfg.sections.some(x => x.label === sc)) { denied++; continue }
       if (!canUpload(t, sc)) { denied++; continue }
       let planTopic
-      if (strictPlan) {   // Pre Mock: only the one planned chapter of that test and section
+      if (chapterRule) {   // Pre Mock: only the one planned chapter of that test and section
         const pl = chaptersOf(t, sc)
         if (pl.length > 1) { offChap++; continue }
         if (pl.length) { planTopic = matchChapter(pl, q.topic); if (!planTopic) { offChap++; continue } }
@@ -583,7 +577,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     const tt = Number(moveTo.test || testNo), ss = moveTo.section || section
     if (!canUpload(tt, ss)) return setMsg(setterOnly ? uploadDeniedMsg(tt, ss) : '❌ Only the target section’s setter or an admin can add questions there.')
     if (tt === testNo && ss === section) return setMsg('❌ Choose a different test or section.')
-    if (strictPlan) {
+    if (chapterRule) {
       const pl = chaptersOf(tt, ss)
       if (planState(pl) === 'multi') return setMsg(`❌ ${tid(tt)} · ${ss} lists ${pl.length} chapters in the Syllabus Plan; keep just one first.`)
       const off = offPlan(rowsSel, pl)
@@ -631,8 +625,12 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const usedList = usedQuestions(secList, sec.q), usedIds = new Set(usedList.map(x => x.id))
   const multiTeachers = contribs.length > 1
   const myName = currentUser?.name || ''
+  // Practice: every practice teacher sets questions for EVERY test. Which tests has this teacher finished (all their subjects)?
+  const mySecs = series === 'practice' ? cfg.sections.filter(x => settersOf(testNo, x.label).some(isMe)) : []
+  const myDone = t => mySecs.length > 0 && mySecs.every(x => get(t, x.label).filter(q => q.uploaded_by === myName).length >= x.q)
+  const myDoneN = mySecs.length ? cfg.tests.filter(t => myDone(t.no)).length : 0
   const chapters = chaptersOf(testNo, sec.label)
-  const offList = strictPlan && chapters.length === 1 ? offPlan(secList, chapters) : []   // questions here that are not on the planned chapter
+  const offList = chapterRule && chapters.length === 1 ? offPlan(secList, chapters) : []   // questions here that are not on the planned chapter
   const normT = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
   const chapterCount = ch => secList.filter(q => normT(q.topic) === normT(ch)).length
   const untagged = chapters.length ? secList.filter(q => !chapters.some(ch => normT(ch) === normT(q.topic))).length : 0
@@ -723,9 +721,10 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <div className="k">{cfg.name} {cfg.noun === 'Set' ? 'bank' : 'builder'}</div>
             <h2>{tid(testNo)}{ready && <span className="rd"><Icon name="check" size={14} stroke={2.6} />Ready to print</span>}</h2>
             <div className="chips">
-              {dateOf(testNo) && <span className="ch"><Icon name="schedule" size={15} />{new Date(dateOf(testNo) + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>}
-              {dateOf(testNo) && today && (() => { const d = Math.round((new Date(dateOf(testNo) + 'T00:00:00') - new Date(today + 'T00:00:00')) / 864e5); return <span className={'ch' + (d >= 0 && d <= 3 ? ' hot' : '')}><Icon name="clock" size={15} />{d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : d > 0 ? `In ${d} days` : `${-d} day${d === -1 ? '' : 's'} ago`}</span> })()}
+              {(dateOf(testNo) || planDate(testNo)) && <span className="ch"><Icon name="schedule" size={15} />{series === 'practice' ? 'Test on ' : ''}{new Date((dateOf(testNo) || planDate(testNo)) + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+              {(dateOf(testNo) || planDate(testNo)) && today && (() => { const d = Math.round((new Date((dateOf(testNo) || planDate(testNo)) + 'T00:00:00') - new Date(today + 'T00:00:00')) / 864e5); return <span className={'ch' + (d >= 0 && d <= 3 ? ' hot' : '')}><Icon name="clock" size={15} />{d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : d > 0 ? `In ${d} days` : `${-d} day${d === -1 ? '' : 's'} ago`}</span> })()}
               <span className="ch"><Icon name="practice" size={15} />{live(testNo).length} {cfg.noun === 'Set' ? 'subjects' : 'sections'}</span>
+              {series === 'practice' && mySecs.length > 0 && <span className={'ch' + (myDoneN === cfg.tests.length ? '' : ' hot')} title="Practice teachers set questions for every test"><Icon name="check" size={15} stroke={2.4} />You: {myDoneN} of {cfg.tests.length} tests done</span>}
             </div>
             <div className="acts">
               {(!embargo || isAdmin) && <button type="button" onClick={exportCsv}><Icon name="upload" size={16} style={{ transform: 'rotate(180deg)' }} />Export bank</button>}
@@ -761,7 +760,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 16px', borderBottom: `1px solid ${PX.line}`, background: PX.tint }}>
           <button type="button" className="px-btn ghost" aria-label={`Previous ${(cfg.noun || 'Test').toLowerCase()}`} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)} style={{ minWidth: 44 }}>‹</button>
           <select aria-label={`Choose a ${(cfg.noun || 'Test').toLowerCase()}`} value={testNo} onChange={e => setTestNo(Number(e.target.value))} style={{ flex: '1 1 180px', maxWidth: 320, fontWeight: 700 }}>
-            {cfg.tests.map(t => <option key={t.no} value={t.no}>{tid(t.no)}{t.date ? ` · ${fmtShort(t.date)}` : ''}{testReady(t.no) ? ' · ready' : ''}</option>)}
+            {cfg.tests.map(t => <option key={t.no} value={t.no}>{tid(t.no)}{(t.date || t.plan) ? ` · ${fmtShort(t.date || t.plan)}` : ''}{testReady(t.no) ? ' · ready' : ''}{series === 'practice' && myDone(t.no) ? ' · ✓ yours done' : ''}</option>)}
           </select>
           <button type="button" className="px-btn ghost" aria-label={`Next ${(cfg.noun || 'Test').toLowerCase()}`} disabled={cfg.tests[cfg.tests.length - 1].no === testNo} onClick={() => stepTest(1)} style={{ minWidth: 44 }}>›</button>
           <button type="button" className="px-btn ghost" style={{ marginLeft: 'auto' }} aria-pressed={showAll} onClick={() => setShowAll(v => !v)}>{showAll ? `Show present ${(cfg.noun || 'Test').toLowerCase()} only` : `Show all ${cfg.tests.length} ${(cfg.noun || 'Test').toLowerCase()}s`}</button>
@@ -814,7 +813,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}><MiniBar pct={health.score} tone={health.score >= 85 ? 'ok' : health.score >= 55 ? 'gold' : 'bad'} width={140} /><b style={{ fontSize: 13 }}>Paper health</b></div>
-            {[...health.checks, ...(strictPlan && chapters.length === 1 ? [{ id: 'plan', ok: offList.length === 0, text: offList.length ? `${offList.length} question${offList.length === 1 ? '' : 's'} not on the planned chapter “${chapters[0]}”` : `Every question is on the planned chapter (${chapters[0]})` }] : [])].map(c => (
+            {[...health.checks, ...(chapterRule && chapters.length === 1 ? [{ id: 'plan', ok: offList.length === 0, text: offList.length ? `${offList.length} question${offList.length === 1 ? '' : 's'} not on the planned chapter “${chapters[0]}”` : `Every question is on the planned chapter (${chapters[0]})` }] : [])].map(c => (
               <div key={c.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '4px 0', color: c.ok ? PX.ink : PX.warn }}>
                 <span style={{ width: 18 }}>{c.ok ? '✅' : '⚠️'}</span><span>{c.text}</span>
               </div>))}
@@ -927,17 +926,19 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               {sec.q <= 60 ? <div className="dots" role="img" aria-label={`${Math.min(myCount, sec.q)} of ${sec.q} questions added`}>{Array.from({ length: sec.q }, (_, i) => <i key={i} className={i < myCount ? 'on' : i === myCount ? 'next' : ''} />)}</div>
                 : <MiniBar pct={(myCount / sec.q) * 100} width={'100%'} />}
               <div className="msg">{signoff(testNo, section) ? <><Icon name="check" size={15} stroke={2.6} />Verified — this section is locked in. Well done.</>
-                : myCount >= sec.q ? <><Icon name="check" size={15} stroke={2.6} />Section complete — it is ready for verification.{strictPlan ? ` New questions you add now go to the Practice bank (${section} · Set ${practiceSetFor(section)}).` : ''}</>
+                : myCount >= sec.q ? <><Icon name="check" size={15} stroke={2.6} />Section complete — it is ready for verification.{strictPlan ? ` New questions you add now go to the practice set for ${tid(testNo)} (${section}).` : ''}</>
                   : myCount === 0 ? <>Let's begin. Choose how you want to add questions below — your first one takes about a minute.</>
                     : myCount < sec.q / 2 ? <>Good start. {sec.q - myCount} more to go — every question is saved the moment you add it.</>
                       : <>Over halfway. Just {sec.q - myCount} more.</>}</div>
             </div>)}
-            {strictPlan && planState(chapters) === 'multi' && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>The plan lists {chapters.length} chapters for {tid(testNo)} · {sec.short || section}.</b> Every teacher must set the one same chapter, so uploads are paused. An admin must keep just one in Mission Sainik → Syllabus.</span></div>}
+            {chapterRule && planState(chapters) === 'multi' && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>The plan lists {chapters.length} chapters for {tid(testNo)} · {sec.short || section}.</b> Every teacher must set the one same chapter, so uploads are paused. An admin must keep just one in Mission Sainik → Syllabus.</span></div>}
             {offList.length > 0 && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>{offList.length} question{offList.length === 1 ? ' is' : 's are'} not on the planned chapter “{chapters[0]}”.</b> They are marked <i>Off plan</i> below. Fix or delete {offList.length === 1 ? 'it' : 'them'}; the section cannot be verified until then.</span></div>}
-            {strictPlan && (chapters.length ? (
-              <div className="msb-rule" role="note"><Icon name="syllabus" size={18} /><span><b>The paper holds {sec.q} questions per section.</b> Only {chapters.length === 1 ? 'the planned chapter is' : 'the planned chapters are'} accepted. Extra questions are saved to the Practice bank ({section} · Set {practiceSetFor(section)}) under the same chapter.</span></div>
+            {chapterRule && (chapters.length ? (
+              <div className="msb-rule" role="note"><Icon name="syllabus" size={18} />{strictPlan
+                ? <span><b>The paper holds {sec.q} questions per section.</b> Only {chapters.length === 1 ? 'the planned chapter is' : 'the planned chapters are'} accepted. Extra questions are saved to the practice set for {tid(testNo)} ({section}) under the same chapter.</span>
+                : <span><b>Practice for {tid(testNo)} · {sec.short || section}.</b> Every practice teacher sets questions for every test, on that test's planned chapter — the same chapter as the Pre Mock test. Other chapters are not accepted.</span>}</div>
             ) : (
-              <div className="msb-rule warn" role="note"><Icon name="alert" size={18} /><span><b>No chapter is planned yet</b> for {tid(testNo)} · {sec.short || section} (Mission Sainik → Syllabus). Any chapter is accepted until it is. The paper holds {sec.q}; extras go to the Practice bank.</span></div>
+              <div className="msb-rule warn" role="note"><Icon name="alert" size={18} /><span><b>No chapter is planned yet</b> for {tid(testNo)} · {sec.short || section} (Mission Sainik → Syllabus). Any chapter is accepted until it is.{strictPlan ? ` The paper holds ${sec.q}; extras go to the practice set for ${tid(testNo)}.` : ''}</span></div>
             ))}
             {chapters.length > 0 && (
               <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
@@ -960,7 +961,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               {(addMode === 'cards' ? ['Fill one card per question', 'Mark the answer (Alt + A to D)', 'Upload all cards together'] : ['Paste text or load a file', 'Check the preview it builds', 'Upload when it looks right']).map((t, i) => <span key={t}><i>{i + 1}</i>{t}</span>)}
             </div>}
             {addMode === 'one' ? (
-              <MissionSainikQuickAdd key={`${testNo}:${section}`} chapters={chaptersOf(testNo, section)} strict={strictPlan && chaptersOf(testNo, section).length > 0} overflowLabel={strictPlan ? `${section} · Practice Set ${practiceSetFor(section)}` : ''} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
+              <MissionSainikQuickAdd key={`${testNo}:${section}`} chapters={chaptersOf(testNo, section)} strict={chapterRule && chaptersOf(testNo, section).length > 0} overflowLabel={strictPlan ? `${section} · practice for ${tid(testNo)}` : ''} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
             ) : addMode === 'cards' ? (
               <>
                 <MultiQuestionAdder noExplanation chapters={chaptersOf(testNo, section)} key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
@@ -1090,7 +1091,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               {byVersion && flav.length > 0 && (() => { const f = flav.find(x => x.by === (String(q.uploaded_by || '').trim() || '(unknown)')); const idx = f ? f.items.findIndex(x => x.id === q.id) : -1; return f && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: idx < sec.q ? '#e8f0fe' : '#f1f3f7', color: idx < sec.q ? '#1d4ed8' : '#7b8799' }}>{idx < sec.q ? `Version ${f.letter} · Q${idx + 1}` : 'Extra'}</span> })()}
               {!byVersion && (secList.length > sec.q || pickInfo.chosen > 0) && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: usedIds.has(q.id) ? '#e6f5ec' : '#f1f3f7', color: usedIds.has(q.id) ? '#0f7a4c' : '#7b8799' }}>{usedIds.has(q.id) ? `In paper · Q${startOf(section) + usedList.findIndex(x => x.id === q.id)}` : 'Not used'}</span>}
               {isAdmin && !byVersion && (secList.length > sec.q || pickInfo.chosen > 0) && <button type="button" className="px-hbtn" onClick={() => toggleInPaper(q)} aria-pressed={!!q.in_paper} aria-label={q.in_paper ? 'Remove from the paper' : 'Use this question in the paper'} title={q.in_paper ? 'Chosen for the paper. Click to un-choose' : 'Choose this question for the paper'} style={{ color: q.in_paper ? '#b8923a' : undefined, fontSize: 16 }}>{q.in_paper ? '★' : '☆'}</button>}
-              {strictPlan && chapters.length === 1 && !matchChapter(chapters, q.topic) && <span className="msb-off" title={`Planned chapter: ${chapters[0]}`}>Off plan</span>}
+              {chapterRule && chapters.length === 1 && !matchChapter(chapters, q.topic) && <span className="msb-off" title={`Planned chapter: ${chapters[0]}`}>Off plan</span>}
               {q.difficulty && <span style={{ fontSize: 11, color: PX.sub }}>{q.difficulty}</span>}
               {<button className="px-hbtn" onClick={() => { setStudio(q.id); setOpen('') }} aria-label={mayEdit ? 'Edit question' : 'Open question'}>{mayEdit ? '✎' : '👁'}</button>}
               {mayEdit && <button className="px-hbtn" onClick={() => del(q)} aria-label="Delete question">🗑</button>}

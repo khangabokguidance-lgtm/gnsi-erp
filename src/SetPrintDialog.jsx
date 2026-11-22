@@ -30,7 +30,7 @@ export default function SetPrintDialog({ subject, setNo, instName, staff = [], u
     return () => { live = false }
   }, [subject, setNo])
   const me = useMemo(() => creatorOf(staff, userName), [staff, userName])
-  const title = `${subject} — Practice set ${setNo}`
+  const title = `${subject} — Practice for PMT-${String(setNo).padStart(2, '0')}`   // one practice set per Pre Mock test
   const doc = useMemo(() => {
     if (!rows) return null
     if (key) return { title: title + ' — Answer key', subject, uploaded_by: userName, body: `| Q | Answer | Level | Topic |\n|---|---|---|---|\n${rows.map((q, i) => `| ${i + 1} | ${q.answer} | ${q.difficulty || '—'} | ${(q.topic || '').trim() || '—'} |`).join('\n')}\n\n---\n\n${rows.filter(q => q.explanation).map(q => `**Q${rows.indexOf(q) + 1}.** ${String(q.explanation).replace(/\s*\n\s*/g, ' ')}`).join('\n\n')}` }

@@ -1009,7 +1009,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
 
   // Practice tab → open the Practice Bank builder on the right subject and set so questions can be added straight away.
   const subjectOfPractice = r => (SUBJECTS.find(x => x.label === r.subject) || SUBJECTS.find(x => r.subject.includes(x.label)) || SUBJECTS[0])
-  const goAddQuestions = (subjectLabel, setNo) => { setBStart(b => ({ test: setNo || 1, section: subjectLabel, n: b.n + 1 })); setTab('practicebuilder') }
+  const goAddQuestions = (subjectLabel, testNo) => { setBStart(b => ({ test: testNo, section: subjectLabel, n: b.n + 1 })); setTab('practicebuilder') }   // testNo = the Pre Mock test it prepares for (none: the builder opens on the present test)
   const setNoFor = r => {
     const sub = subjectOfPractice(r)
     if (r.test_no > 0) return Math.min(r.test_no, PRACTICE_PANEL[sub.key]?.sets || 1)   // sets added from the Panel carry their number
@@ -1029,7 +1029,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
           </div>
         </div>
         <Chip status={r.status} overdue={late} />
-        {r.kind === 'practice' && <button className="px-btn ghost" onClick={() => goAddQuestions(subjectOfPractice(r).label, setNoFor(r))}>＋ Questions</button>}
+        {r.kind === 'practice' && <button className="px-btn ghost" onClick={() => goAddQuestions(subjectOfPractice(r).label)}>＋ Questions</button>}
         {quick && <button className="px-btn gold" disabled={busy} onClick={() => saveTask(r, { status: quick })}>Mark {quick.toLowerCase()}</button>}
         <button className="px-btn ghost" onClick={() => setSel(r)}>Open</button>
       </div>
@@ -1098,10 +1098,10 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   }, [tab])
   const practiceSets = (() => {
     const TONES = ['#2563eb', '#7c3aed', '#16a34a', '#d97706', '#db2777', '#0891b2']
-    const groups = SUBJECTS.map((sub, si) => ({ sub, tone: TONES[si % 6], sets: Array.from({ length: PRACTICE_PANEL[sub.key]?.sets || 1 }, (_, i) => ({ no: i + 1, n: pracCounts[(i + 1) + '|' + sub.label] || 0 })) }))
-    const all = groups.flatMap(g => g.sets), done = all.filter(x => x.n >= 25).length, started = all.filter(x => x.n > 0 && x.n < 25).length, qn = all.reduce((t, x) => t + x.n, 0), target = all.length * 25
+    const groups = SUBJECTS.map((sub, si) => ({ sub, tone: TONES[si % 6], sets: TESTS.map(t => ({ no: t.no, n: pracCounts[t.no + '|' + sub.label] || 0, q: practiceQOf(sub.key), chapter: syl[t.no + '|' + sub.label] || '' })) }))   // one practice set per Pre Mock test
+    const all = groups.flatMap(g => g.sets), done = all.filter(x => x.n >= x.q).length, started = all.filter(x => x.n > 0 && x.n < x.q).length, qn = all.reduce((t, x) => t + x.n, 0), target = all.reduce((t, x) => t + x.q, 0)
     const pct = target ? Math.round((qn / target) * 100) : 0
-    const Ring = ({ n, tone }) => { const r = 19, c = 2 * Math.PI * r, f = Math.min(1, n / 25); return (<svg width="50" height="50" viewBox="0 0 50 50" aria-hidden="true" style={{ flex: 'none' }}><circle cx="25" cy="25" r={r} fill="none" stroke="#eef1f6" strokeWidth="5" /><circle cx="25" cy="25" r={r} fill="none" stroke={n >= 25 ? '#0f7a4c' : tone} strokeWidth="5" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - f)} transform="rotate(-90 25 25)" /><text x="25" y="29" textAnchor="middle" fontSize="12" fontWeight="800" fill="#132a4f">{n >= 25 ? '✓' : n}</text></svg>) }
+    const Ring = ({ n, q, tone }) => { const r = 19, c = 2 * Math.PI * r, f = Math.min(1, n / q); return (<svg width="50" height="50" viewBox="0 0 50 50" aria-hidden="true" style={{ flex: 'none' }}><circle cx="25" cy="25" r={r} fill="none" stroke="#eef1f6" strokeWidth="5" /><circle cx="25" cy="25" r={r} fill="none" stroke={n >= q ? '#0f7a4c' : tone} strokeWidth="5" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - f)} transform="rotate(-90 25 25)" /><text x="25" y="29" textAnchor="middle" fontSize="12" fontWeight="800" fill="#132a4f">{n >= q ? '✓' : n}</text></svg>) }
     return (
       <div style={{ padding: isMobile ? 12 : '16px 18px', borderBottom: `1px solid ${PX.line}`, background: 'linear-gradient(180deg,#fff,#fcfbf7)' }}>
         <div style={{ borderRadius: 22, padding: isMobile ? '14px 14px' : '18px 22px', marginBottom: 14, color: '#fff', background: 'linear-gradient(135deg,#132a4f 0%,#1e3a6e 58%,#2f5aa3 100%)', boxShadow: '0 16px 36px -22px rgba(19,42,79,.7)', display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -1109,23 +1109,23 @@ function MissionSainikInner({ currentUser: sessionUser }) {
             <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.18em', textTransform: 'uppercase', color: '#e9d9b0' }}>Practice bank</div>
             <div style={{ fontFamily: PX.serif, fontSize: isMobile ? 22 : 26, fontWeight: 600 }}>{qn} <span style={{ fontSize: 14, fontWeight: 500, color: 'rgba(255,255,255,.7)' }}>of {target} questions</span></div>
             <div style={{ height: 8, borderRadius: 99, background: 'rgba(255,255,255,.18)', margin: '8px 0 4px', overflow: 'hidden' }}><div style={{ width: pct + '%', height: '100%', borderRadius: 99, background: 'linear-gradient(90deg,#b8923a,#f0e1b8)' }} /></div>
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.75)' }}>{pct}% complete · open any set to add, edit, preview or scan questions</div>
+            <div style={{ fontSize: 12, color: 'rgba(255,255,255,.75)' }}>{pct}% complete · one practice set for every test · open any test to add, edit, preview or scan questions</div>
           </div>
           <button type="button" onClick={() => setPaperMaker(true)} style={{ border: 'none', cursor: 'pointer', fontFamily: 'inherit', background: 'linear-gradient(180deg,#e9d9b0,#d9bf79)', color: '#132a4f', fontWeight: 800, fontSize: 14, padding: '12px 18px', borderRadius: 16, boxShadow: '0 10px 22px -12px rgba(0,0,0,.5)' }}>🧠 Smart paper maker</button>
-          <div style={{ display: 'flex', gap: 8 }}>{[[done, 'Sets done'], [started, 'In progress'], [all.length - done - started, 'Empty']].map(([n, l]) => <div key={l} style={{ background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.18)', borderRadius: 16, padding: '8px 14px', textAlign: 'center', minWidth: 74 }}><div style={{ font: '700 20px Georgia,serif' }}>{n}</div><div style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#e9d9b0', fontWeight: 700 }}>{l}</div></div>)}</div>
+          <div style={{ display: 'flex', gap: 8 }}>{[[done, 'Tests done'], [started, 'In progress'], [all.length - done - started, 'Empty']].map(([n, l]) => <div key={l} style={{ background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.18)', borderRadius: 16, padding: '8px 14px', textAlign: 'center', minWidth: 74 }}><div style={{ font: '700 20px Georgia,serif' }}>{n}</div><div style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: '#e9d9b0', fontWeight: 700 }}>{l}</div></div>)}</div>
         </div>
         {groups.map(g => (
           <div key={g.sub.key} style={{ marginBottom: 12 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '0 2px 6px' }}><span style={{ width: 10, height: 10, borderRadius: '50%', background: g.tone }} /><b style={{ fontSize: 13.5 }}>{g.sub.label}</b><span style={{ fontSize: 12, color: PX.sub }}>{g.sets.reduce((t, x) => t + x.n, 0)}/{g.sets.length * 25}</span></div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(100%,200px),1fr))', gap: 10 }}>
               {g.sets.map(x => (
-                <div key={x.no} style={{ position: 'relative' }}><button type="button" onClick={() => goAddQuestions(g.sub.label, x.no)} aria-label={`${g.sub.label} set ${x.no}, ${x.n} of 25 questions`}
-                  style={{ display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left', padding: '10px 12px', borderRadius: 16, border: `1.5px solid ${x.n >= 25 ? '#bfe3cc' : PX.line}`, background: x.n >= 25 ? '#f7fcf9' : '#fff', cursor: 'pointer', fontFamily: 'inherit', borderLeft: `4px solid ${g.tone}`, boxShadow: '0 1px 2px rgba(19,42,79,.05)', transition: 'transform .15s,box-shadow .15s' }}
+                <div key={x.no} style={{ position: 'relative' }}><button type="button" onClick={() => goAddQuestions(g.sub.label, x.no)} title={x.chapter ? `Chapter: ${x.chapter}` : 'No chapter planned yet'} aria-label={`${g.sub.label} practice for PMT-${String(x.no).padStart(2, '0')}, ${x.n} of ${x.q} questions`}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', boxSizing: 'border-box', textAlign: 'left', padding: '10px 12px', borderRadius: 16, border: `1.5px solid ${x.n >= x.q ? '#bfe3cc' : PX.line}`, background: x.n >= x.q ? '#f7fcf9' : '#fff', cursor: 'pointer', fontFamily: 'inherit', borderLeft: `4px solid ${g.tone}`, boxShadow: '0 1px 2px rgba(19,42,79,.05)', transition: 'transform .15s,box-shadow .15s' }}
                   onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 24px -16px rgba(19,42,79,.5)' }} onMouseLeave={e => { e.currentTarget.style.transform = ''; e.currentTarget.style.boxShadow = '0 1px 2px rgba(19,42,79,.05)' }}>
-                  <Ring n={x.n} tone={g.tone} />
-                  <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontWeight: 800, fontSize: 14, color: PX.ink }}>Set {x.no}</span><span style={{ display: 'block', fontSize: 11.5, whiteSpace: 'nowrap', color: x.n >= 25 ? '#14633f' : PX.sub, fontWeight: 600 }}>{x.n >= 25 ? 'Complete' : x.n ? `${x.n}/25 · ✎ Edit` : 'Empty · ＋ Add'}</span></span>
+                  <Ring n={x.n} q={x.q} tone={g.tone} />
+                  <span style={{ minWidth: 0 }}><span style={{ display: 'block', fontWeight: 800, fontSize: 14, color: PX.ink }}>PMT-{String(x.no).padStart(2, '0')}</span><span style={{ display: 'block', fontSize: 11.5, whiteSpace: 'nowrap', color: x.n >= x.q ? '#14633f' : PX.sub, fontWeight: 600 }}>{x.n >= x.q ? 'Complete' : x.n ? `${x.n}/${x.q} · ✎ Edit` : 'Empty · ＋ Add'}</span></span>
                 </button>
-                {x.n > 0 && <button type="button" title="Print this set (2 columns, space saver, class copies)" aria-label={`Print ${g.sub.label} set ${x.no}`} onClick={() => setPrintSet({ subject: g.sub.label, setNo: x.no })} style={{ position: 'absolute', top: 6, right: 6, width: 30, height: 30, borderRadius: 10, border: `1px solid ${PX.line}`, background: '#fff', cursor: 'pointer', fontSize: 14 }}>🖨</button>}</div>))}
+                {x.n > 0 && <button type="button" title="Print this set (2 columns, space saver, class copies)" aria-label={`Print ${g.sub.label} practice for PMT-${String(x.no).padStart(2, '0')}`} onClick={() => setPrintSet({ subject: g.sub.label, setNo: x.no })} style={{ position: 'absolute', top: 6, right: 6, width: 30, height: 30, borderRadius: 10, border: `1px solid ${PX.line}`, background: '#fff', cursor: 'pointer', fontSize: 14 }}>🖨</button>}</div>))}
             </div>
           </div>))}
       </div>
