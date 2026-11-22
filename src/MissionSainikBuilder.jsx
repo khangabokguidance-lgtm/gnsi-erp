@@ -169,6 +169,9 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     : (MEGA_PANEL[s] || []).flatMap(k => (panel?.setters?.[k] ?? PANEL[k]) || [])
   const isLocked = t => locks?.[`lock:${series}:${t}`] === 'on'
   const canEdit = (t, s) => isAdmin || (!isLocked(t) && settersOf(t, s).some(isMe))
+  // Pre Mock, Mock (Mega) and Practice: ONLY the section's own setter can add questions. Admins can still verify, edit, delete, lock and choose; they cannot upload.
+  const setterOnly = series === 'pre' || series === 'mega' || series === 'practice'
+  const canUpload = (t, s) => (setterOnly ? !isLocked(t) && settersOf(t, s).some(isMe) : canEdit(t, s))
   // Embargo (admin setting): until the test date only the section's setter and admins can read questions / answers or print.
   const dateOf = t => cfg.tests.find(x => x.no === t)?.date
   const embargoed = (t, s) => !!embargo && !!dateOf(t) && !!today && today < dateOf(t) && !canEdit(t, s)
@@ -222,8 +225,15 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     return { ...parsedBase, errors: problems && !parsedBase.errors.length ? [`${problems} question card(s) incomplete — see the red notes`] : parsedBase.errors, questions: parsedBase.questions.map((q, i) => (filled[i]?.image && filled[i].type !== 'normal' ? { ...q, image_data: filled[i].image } : q)) }
   }, [parsedBase, cards, addMode])
   // Saves questions that are already parsed (from the paste box, the cards, or one question at a time): duplicates, count warning, insert, sign-off reset, auto-submit.
+  const uploadDeniedMsg = (t, sc) => {
+    if (setterOnly) {
+      const who = [...new Set(settersOf(t, sc).map(fullName))]
+      return isLocked(t) && who.length ? '❌ This paper is locked by an admin.' : who.length ? `❌ Only the section setter can upload here: ${who.join(' / ')}.${isAdmin ? ' As an admin you can verify, edit or delete.' : ''}` : '❌ No setter is allotted to this section yet. An admin must allot one first (Panel).'
+    }
+    return '❌ Only the section setter or an admin can upload here.'
+  }
   const insertQuestions = async (list, { clear = false } = {}) => {
-    if (!canEdit(testNo, section)) { setMsg('❌ Only the section setter or an admin can upload here.'); return false }
+    if (!canUpload(testNo, section)) { setMsg(uploadDeniedMsg(testNo, section)); return false }
     const ownOf = l => (byVersion ? l.filter(x => x.uploaded_by === (currentUser?.name || '')) : l)   // several sets: each teacher's own set
     const have = ownOf(get(testNo, section)).length
     if (list.length > 200) { setMsg('❌ Upload at most 200 questions at a time.'); return false }
@@ -261,7 +271,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     return true
   }
   const upload = async () => {
-    if (!canEdit(testNo, section)) return setMsg('❌ Only the section setter or an admin can upload here.')
+    if (!canUpload(testNo, section)) return setMsg(uploadDeniedMsg(testNo, section))
     if (parsed.errors.length) return setMsg('❌ ' + parsed.errors.slice(0, 3).join(' · '))
     if (!parsed.questions.length) return setMsg('❌ No questions found — check the format.')
     await insertQuestions(parsed.questions, { clear: true })
@@ -541,7 +551,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     for (const q of list) {
       const t = keep ? Number(q.test_no) : testNo, sc = keep ? q.section : section
       if (!cfg.tests.some(x => x.no === t) || !cfg.sections.some(x => x.label === sc)) { denied++; continue }
-      if (!canEdit(t, sc)) { denied++; continue }
+      if (!canUpload(t, sc)) { denied++; continue }
       let planTopic
       if (strictPlan) {   // Pre Mock: only the one planned chapter of that test and section
         const pl = chaptersOf(t, sc)
@@ -571,7 +581,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const moveSelected = async copy => {
     const rowsSel = secList.filter(q => picked.includes(q.id)); if (!rowsSel.length) return
     const tt = Number(moveTo.test || testNo), ss = moveTo.section || section
-    if (!canEdit(tt, ss)) return setMsg('❌ Only the target section’s setter or an admin can add questions there.')
+    if (!canUpload(tt, ss)) return setMsg(setterOnly ? uploadDeniedMsg(tt, ss) : '❌ Only the target section’s setter or an admin can add questions there.')
     if (tt === testNo && ss === section) return setMsg('❌ Choose a different test or section.')
     if (strictPlan) {
       const pl = chaptersOf(tt, ss)
@@ -616,6 +626,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const sec = cfg.sections.find(s => s.label === section)
   const secList = get(testNo, sec.label)
   const mayEdit = canEdit(testNo, sec.label)
+  const mayAdd = canUpload(testNo, sec.label)   // may add questions (setter only on Pre Mock, Mock and Practice)
   const pickInfo = pickSummary(secList, sec.q), contribs = contributors(secList, sec.q)
   const usedList = usedQuestions(secList, sec.q), usedIds = new Set(usedList.map(x => x.id))
   const multiTeachers = contribs.length > 1
@@ -900,7 +911,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       <div id="msb-editor" style={{ scrollMarginTop: 140 }}>
       <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${byVersion && flav.length > 1 ? `${flav.length} teachers · yours ${myCount}/${sec.q}` : (secList.length > sec.q ? `${secList.length} uploaded · ${sec.q} needed` : `${secList.length}/${sec.q} questions`)} · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
         right={<span style={{ display: 'flex', gap: 8 }}>{(byVersion ? flavourStatus(secList, sec.q) === 'ok' : secList.length >= sec.q) && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
-        {mayEdit ? (
+        {mayAdd ? (
           <>
             {overview ? (
               <div className="msb-prog" style={{ '--c': secHue }}>
@@ -1027,7 +1038,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           </>
         ) : (
           <div style={{ padding: '8px 12px', borderRadius: 10, background: PX.tint, fontSize: 13, color: PX.sub }}>
-            🔒 View only. Only {settersOf(testNo, section).map(fullName).join(' / ') || 'the section setter'} (or an admin) can upload to this section.
+            🔒 {setterOnly ? <>Only the section setter can upload here: <b>{[...new Set(settersOf(testNo, section).map(fullName))].join(' / ') || 'none allotted yet — an admin must allot one in Panel'}</b>.{isAdmin ? ' As an admin you can verify, edit, delete, lock and choose questions.' : ''}</> : <>View only. Only {settersOf(testNo, section).map(fullName).join(' / ') || 'the section setter'} (or an admin) can upload to this section.</>}
           </div>
         )}
       </PremiumCard>
@@ -1153,7 +1164,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           canEdit={mayEdit && !embargoed(testNo, section)} hasPictureCols={secList.some(x => 'passage' in x || 'image_data' in x)} isMobile={isMobile} onSave={saveQuestionPatch} onDelete={del} onClose={() => setStudio(null)} setMsg={setMsg} />
       )}
       {scanEdit && editQ && <ScanFigure onDone={u => { setEditQ(q => ({ ...q, image_data: u })); setScanEdit(false) }} onClose={() => setScanEdit(false)} />}
-      {isMobile && mayEdit && !editorInView && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
+      {isMobile && mayAdd && !editorInView && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
     </div>
   )
 }
