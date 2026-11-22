@@ -12,8 +12,7 @@
 -- Scripts and the SQL editor (no signed-in user) are never blocked. Soft delete, restore, "in paper" picks and edits that keep the
 -- question on the same test, section and chapter always work.
 --
--- Not enforced here: WHO may upload. The database cannot tell which teacher is acting (all staff share the portal login), so
--- "only the section's setter can upload" is applied by the app only.
+-- Not enforced here: WHO may upload. That is migration 20261224 (setter rules), which identifies the signed-in teacher.
 
 create or replace function public.mission_sainik_norm(t text) returns text language sql immutable as $$
   select lower(regexp_replace(btrim(coalesce(t, '')), '\s+', ' ', 'g'))
