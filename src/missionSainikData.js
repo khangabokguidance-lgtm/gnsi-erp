@@ -138,6 +138,17 @@ export function nameMatches(who, name) {
   // a short panel name ("Sandhya") also matches a longer login name ("Sandhyarani")
   return words.includes(want) || (want.length >= 4 && words.some(x => x.startsWith(want)))
 }
+// Staff whose full name matches a panel name. A panel name must point at exactly ONE person: if "Singh" or "Sandhya" matches several staff
+// members, it identifies nobody, so no one gets setter rights from it until an admin makes the name specific.
+export function staffMatching(token, directory = []) {
+  const names = (directory || []).map(x => (typeof x === 'string' ? x : x?.name)).filter(Boolean)
+  return names.filter(n => nameMatches(n, token))
+}
+export function matchesOne(who, token, directory = []) {
+  if (!nameMatches(who, token)) return false
+  if (!(directory || []).length) return true            // no staff list to check against: behave as before
+  return staffMatching(token, directory).length <= 1
+}
 // Only http(s) links may be stored or opened (blocks javascript: / data: URLs).
 export function safeUrl(u) {
   try { const x = new URL(String(u || '').trim()); return x.protocol === 'http:' || x.protocol === 'https:' ? x.href : '' } catch { return '' }

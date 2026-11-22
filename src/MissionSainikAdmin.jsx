@@ -9,7 +9,7 @@ import { fetchAll } from './lib/missionSainikQuestions'
 import { TESTS, MOCK_TESTS, fullName } from './missionSainikData'
 
 const TABLE = 'mission_sainik_tasks'
-const SERIES = [['pre', 'Pre Mock', TESTS, 'PMT'], ['mega', 'Mega Mock', MOCK_TESTS, 'MT'], ['daily', 'Daily Class Test', TESTS, 'T'], ['practice', 'Practice Bank', [1, 2, 3].map(n => ({ no: n })), 'Set']]
+const SERIES = [['pre', 'Pre Mock', TESTS, 'PMT'], ['mega', 'Mega Mock', MOCK_TESTS, 'MT'], ['daily', 'Daily Class Test', TESTS, 'T'], ['practice', 'Practice Bank', TESTS, 'PMT']]
 const csvCell = v => { const t = String(v ?? ''); return '"' + (/^[=+\-@\t\r]/.test(t) ? "'" + t : t).replace(/"/g, '""') + '"' }
 const download = (name, blob) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url) }
 const taskLabel = r => `${r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice'} · ${r.subject}`
@@ -116,7 +116,7 @@ export default function MissionSainikAdmin({ rows, settings, putSetting, delSett
       <PremiumCard title="Locked papers" subtitle="A locked paper cannot be changed by anyone except admins — use it once a paper is final">
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'end' }}>
           <label style={lab}>Builder<select className="px-input" value={lockSel.series} onChange={e => setLockSel({ series: e.target.value, test: 1 })}>{SERIES.map(s => <option key={s[0]} value={s[0]}>{s[1]}</option>)}</select></label>
-          <label style={lab}>Test / set<select className="px-input" value={lockSel.test} onChange={e => setLockSel({ ...lockSel, test: Number(e.target.value) })}>{SERIES.find(s => s[0] === lockSel.series)[2].map(t => <option key={t.no} value={t.no}>{SERIES.find(s => s[0] === lockSel.series)[3] === 'Set' ? 'Set ' + t.no : SERIES.find(s => s[0] === lockSel.series)[3] + '-' + String(t.no).padStart(2, '0')}</option>)}</select></label>
+          <label style={lab}>Test<select className="px-input" value={lockSel.test} onChange={e => setLockSel({ ...lockSel, test: Number(e.target.value) })}>{SERIES.find(s => s[0] === lockSel.series)[2].map(t => <option key={t.no} value={t.no}>{SERIES.find(s => s[0] === lockSel.series)[3] === 'Set' ? 'Set ' + t.no : SERIES.find(s => s[0] === lockSel.series)[3] + '-' + String(t.no).padStart(2, '0')}</option>)}</select></label>
           <button className="px-btn gold" onClick={lockNow}>🔒 Lock paper</button>
         </div>
         <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -126,6 +126,28 @@ export default function MissionSainikAdmin({ rows, settings, putSetting, delSett
         <div style={{ fontSize: 12, color: PX.sub, marginTop: 8 }}>You can also lock the paper you are viewing from a builder's Paper tools.</div>
       </PremiumCard>
 
+      <PremiumCard title="Database rules" subtitle="Keep the Syllabus Plan and the 25-question limit true even for anyone who calls the database directly">
+        <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start', cursor: 'pointer' }}>
+          <input type="checkbox" checked={settings.enforce_plan === 'on'} style={{ marginTop: 4, width: 20, height: 20 }} onChange={async e => {
+            if (e.target.checked) {
+              if (!window.confirm('Switch on the database rules?\n\nNeeds migration 20261223 in Supabase. Pre Mock and Practice questions must then be on the planned chapter, and Pre Mock holds 25 per section. Existing questions are not changed.\n\nFirst run  select * from mission_sainik_plan_violations;  in the SQL editor to see which existing questions break the rules.')) return
+              if (await putSetting('enforce_plan', 'on')) { audit('enforce_plan', null, { on: true }); setMsg('🔒 Database rules are ON') }
+            } else if (await delSetting('enforce_plan')) { audit('enforce_plan', null, { on: false }); setMsg('Database rules are OFF') }
+          }} />
+          <span><b>Enforce the syllabus plan and the 25 limit in the database</b>
+            <span style={{ display: 'block', fontSize: 12.5, color: PX.sub, marginTop: 3, lineHeight: 1.5 }}>Pre Mock and Practice questions must be on the chapter the plan gives that test (exactly one chapter), and a Pre Mock section holds 25 questions (per teacher while “multiple sets” is on). Who may upload is still checked by the app only. Run migration <code>20261223</code> in Supabase first.</span></span>
+        </label>
+        <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start', cursor: 'pointer', marginTop: 16, paddingTop: 14, borderTop: `1px solid ${PX.line}` }}>
+          <input type="checkbox" checked={settings.enforce_setters === 'on'} style={{ marginTop: 4, width: 20, height: 20 }} onChange={async e => {
+            if (e.target.checked) {
+              if (!window.confirm('Switch on setter rules in the database?\n\nNeeds migration 20261224 in Supabase. Then only the section\'s allotted setter can add Pre Mock, Mock and Practice questions (admins cannot), “uploaded by” is stamped by the database, and only admins can change who sets and verifies.\n\nFirst make sure: the panel is loaded (Panel → Load from notice), every staff member\'s login is linked to their staff profile, and every test and section has a setter in the allotment.')) return
+              if (await putSetting('enforce_setters', 'on')) { audit('enforce_setters', null, { on: true }); setMsg('🔒 Setter rules are ON in the database') }
+            } else if (await delSetting('enforce_setters')) { audit('enforce_setters', null, { on: false }); setMsg('Setter rules are OFF in the database') }
+          }} />
+          <span><b>Enforce setters in the database</b>
+            <span style={{ display: 'block', fontSize: 12.5, color: PX.sub, marginTop: 3, lineHeight: 1.5 }}>Only the section’s allotted setter can add questions; the database stamps who uploaded them; only admins change who sets and verifies. A panel name that matches several staff identifies nobody. Run migration <code>20261224</code> first and check the panel, staff links and allotment as the prompt says.</span></span>
+        </label>
+      </PremiumCard>
       <PremiumCard title="Reminder to all teachers" subtitle="One message listing everyone's pending sections — paste it into your WhatsApp group"
         right={<span style={{ display: 'flex', gap: 8 }}><button className="px-hbtn" disabled={!reminder} onClick={() => copy(reminder)}>Copy</button><button className="px-hbtn" disabled={!reminder} onClick={() => window.open('https://wa.me/?text=' + encodeURIComponent(reminder), '_blank', 'noopener')}>💬 WhatsApp</button></span>}>
         {reminder ? <pre style={{ whiteSpace: 'pre-wrap', margin: 0, fontFamily: 'inherit', fontSize: 13, background: PX.tint, padding: 12, borderRadius: 12, maxHeight: 240, overflow: 'auto' }}>{reminder}</pre> : <div style={{ fontSize: 13, color: PX.sub }}>🎉 No pending sections.</div>}
