@@ -678,7 +678,9 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>
 
       <MissionSainikEasyUpload sections={easySections} testNo={testNo} section={section} tid={tid} text={text} setText={setText} mayEdit={mayEdit} why={easyWhy} busy={busy}
-        onPick={(t, label) => { setTestNo(t); setSection(label) }} onFile={loadFile} onUpload={list => insertQuestions(list, { clear: true })} />
+        onPick={(t, label) => { setTestNo(t); setSection(label) }} onFile={loadFile} onUpload={list => insertQuestions(list, { clear: true })}
+        paper={isAdmin ? { ready: live(testNo).filter(x => (byVersion ? flavourStatus(get(testNo, x.label), x.q) === 'ok' : get(testNo, x.label).length >= x.q)).length, total: live(testNo).length, have: testCount(testNo), need: totalQ(testNo) } : null}
+        onPreview={() => previewDoc(testNo, false)} onPrint={() => printDoc(testNo, false)} />
 
       <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isAdmin && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button>{isAdmin && <button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button>}</span>}>
