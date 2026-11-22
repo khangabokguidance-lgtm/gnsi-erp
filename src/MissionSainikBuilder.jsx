@@ -14,6 +14,8 @@ import QuestionEditor from './QuestionEditor'
 import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { Icon } from './MissionSainikIcons'
+import { settersOfRow } from './lib/missionSainikAllot'
+import { routePreMock, matchChapter } from './lib/missionSainikPlanRule'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
@@ -141,6 +143,15 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const get = (t, s) => bySec[t + '|' + s] || []
   // The syllabus plan (Mission Sainik → Syllabus): the chapter(s) planned for this test and section. Pre Mock and Daily tests follow it.
   const chaptersOf = (t, label) => ((series === 'pre' || series === 'daily') && syllabus ? String(syllabus[t + '|' + label] || '').split(';').map(x => x.trim()).filter(Boolean) : [])
+  // Pre Mock follows the Syllabus Plan for each test only, and holds exactly the section's 25 questions; extras go to the Practice bank.
+  const strictPlan = series === 'pre'
+  const practiceSetFor = label => {   // the uploading teacher's own practice set of this subject (Set 1 when none is allotted to them)
+    const key = cfg.sections.find(x => x.label === label)?.key, max = PRACTICE_PANEL[key]?.sets || 1
+    const same = (tasks || []).filter(r => r.kind === 'practice' && r.subject === label).sort((a, b) => a.id - b.id)
+    const mine = same.find(r => settersOfRow(r).some(isMe))
+    if (!mine) return 1
+    return mine.test_no > 0 ? Math.min(mine.test_no, max) : Math.min(Math.max(same.indexOf(mine) + 1, 1), max)
+  }
   const [chapterPick, setChapterPick] = useState('')
   const avail = (t, s) => !s.sets || t <= s.sets                       // practice: not every subject has a 3rd set
   const live = t => cfg.sections.filter(s => avail(t, s))
@@ -214,16 +225,25 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     const seen = new Set(ownOf(get(testNo, section)).map(q => norm(q.question)))
     const dupes = list.filter((q, i) => seen.has(norm(q.question)) || list.findIndex(z => norm(z.question) === norm(q.question)) !== i)
     if (dupes.length) { setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”.${list.length > 1 ? ' Remove them and upload again.' : ''}`); return false }
-    if (have + list.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + list.length}. Upload anyway?`)) return false
-    setBusy(true)
     const chs = chaptersOf(testNo, section), defTopic = chs.includes(chapterPick) ? chapterPick : chs.length === 1 ? chs[0] : ''   // a question without a topic gets the planned chapter
-    const rows = list.map(q => ({ ...q, topic: q.topic || defTopic || q.topic, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
-    const { error } = await supabase.from(TABLE).insert(rows)
+    let paperList = list.map(q => ({ ...q, topic: q.topic || defTopic || q.topic })), extra = []
+    if (strictPlan) {
+      const r = routePreMock({ list, chapters: chs, defTopic, room: sec.q - have })
+      if (r.error) { setMsg(`❌ ${tid(testNo)} · ${section} follows the Syllabus Plan: ${r.planned.join(' / ')}. ${r.bad[0].topic ? `“${r.bad[0].topic}” is not planned for this test.` : 'Choose the chapter first.'}${r.bad.length > 1 ? ` (${r.bad.length} questions)` : ''}`); return false }
+      paperList = r.paper; extra = r.extra
+      if (extra.length && list.length > 1 && !window.confirm(`${tid(testNo)} · ${section} has room for ${paperList.length} more (limit ${sec.q}).\n\nThe other ${extra.length} will be saved to the Practice bank (${section} · Set ${practiceSetFor(section)}), tagged with their chapter.\n\nContinue?`)) return false
+    } else if (have + list.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + list.length}. Upload anyway?`)) return false
+    setBusy(true)
+    const practiceNo = practiceSetFor(section)
+    const rows = paperList.map(q => ({ ...q, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
+    const xrows = extra.map(q => ({ ...q, series: 'practice', test_no: practiceNo, section, uploaded_by: currentUser?.name || '' }))
+    const { error } = await supabase.from(TABLE).insert([...rows, ...xrows])
     setBusy(false)
     if (error) { setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : '')); return false }
     if (clear) { setText(''); setCards([blankCard()]) }
-    setMsg(`✅ ${rows.length === 1 ? 'Question' : rows.length + ' questions'} added to ${tid(testNo)} · ${section} · ${Math.min(have + rows.length, sec.q)} of ${sec.q}`)
-    audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length })
+    const xTxt = xrows.length ? `${xrows.length === 1 ? '1 question' : xrows.length + ' questions'} saved to the Practice bank (${section} · Set ${practiceNo}${xrows[0].topic ? ' · ' + xrows[0].topic : ''})` : ''
+    setMsg(rows.length ? `✅ ${rows.length === 1 ? 'Question' : rows.length + ' questions'} added to ${tid(testNo)} · ${section} · ${Math.min(have + rows.length, sec.q)} of ${sec.q}${xTxt ? ' — ' + xTxt : ''}` : `✅ ${tid(testNo)} · ${section} is full (${sec.q}). ${xTxt}`)
+    audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length, ...(xrows.length ? { to_practice: xrows.length, practice_set: practiceNo } : {}) })
     await clearSignoff(testNo, section)
     await load()
     // Pre Mock: when the section is complete, mark the allotted task as submitted automatically.
@@ -269,7 +289,9 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     if (!['A', 'B', 'C', 'D'].includes(d.answer)) return setMsg('❌ Choose the correct answer.')
     const norm = x => x.toLowerCase().replace(/\s+/g, ' ').trim()
     if (get(d.test_no, d.section).some(q => q.id !== d.id && norm(q.question) === norm(d.question))) return setMsg('❌ Another question in this section has the same text.')
-    const patch = { question: d.question.trim(), option_a: d.option_a.trim(), option_b: d.option_b.trim(), option_c: d.option_c.trim(), option_d: d.option_d.trim(), answer: d.answer, explanation: d.explanation?.trim() || null, topic: d.topic?.trim() || null, difficulty: d.difficulty || null }
+    const planned = strictPlan ? chaptersOf(d.test_no, d.section) : []
+    if (planned.length && d.topic?.trim() && !matchChapter(planned, d.topic)) return setMsg(`❌ “${d.topic.trim()}” is not planned for this test. Use: ${planned.join(' / ')}`)
+    const patch = { question: d.question.trim(), option_a: d.option_a.trim(), option_b: d.option_b.trim(), option_c: d.option_c.trim(), option_d: d.option_d.trim(), answer: d.answer, explanation: d.explanation?.trim() || null, topic: (planned.length && matchChapter(planned, d.topic)) || d.topic?.trim() || null, difficulty: d.difficulty || null }
     if ('passage' in d) patch.passage = d.passage?.trim() || null
     if ('image_data' in d) patch.image_data = d.image_data || null
     const { error } = await supabase.from(TABLE).update(patch).eq('id', d.id)
@@ -280,6 +302,9 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   // Save one question from the full-screen editor (same rules as the old inline form).
   const saveQuestionPatch = async (q, patch) => {
     if (!canEdit(q.test_no, q.section)) { setMsg('❌ Only the section setter or an admin can edit this question.'); return false }
+    const planned = strictPlan && 'topic' in patch ? chaptersOf(q.test_no, q.section) : []
+    if (planned.length && patch.topic && !matchChapter(planned, patch.topic)) { setMsg(`❌ “${patch.topic}” is not planned for this test. Use: ${planned.join(' / ')}`); return false }
+    if (planned.length && patch.topic) patch = { ...patch, topic: matchChapter(planned, patch.topic) }
     const { error } = await supabase.from(TABLE).update(patch).eq('id', q.id)
     if (error) { setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : '')); return false }
     audit('edit_question', `${series}:${q.test_no}:${q.section}`, { id: q.id })
@@ -610,6 +635,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 .msb-meth em{position:absolute;top:10px;right:10px;font-style:normal;font-size:10px;font-weight:800;letter-spacing:.04em;padding:2px 8px;border-radius:99px;background:#fff3d6;color:#8a5500}
 .msb-how{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 14px;padding:10px 14px;border-radius:12px;background:#f6f8fc;border:1px dashed #cdd6e6;font-size:13px;color:#26354f;font-weight:600}
 .msb-how span{display:inline-flex;align-items:center;gap:8px}.msb-how i{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#132a4f;color:#fff;font:800 12px/1 inherit;font-style:normal}
+.msb-rule{display:flex;gap:11px;align-items:flex-start;margin:0 0 14px;padding:11px 14px;border-radius:12px;background:#f6f1ff;border:1px solid #d9ccf5;color:#2d1b69;font-size:13px;line-height:1.5}.msb-rule svg{flex:none;margin-top:2px;color:#6d28d9}.msb-rule.warn{background:#fff7e6;border-color:#f0d9a0;color:#6b4300}.msb-rule.warn svg{color:#b45309}
 .msb-more{margin-top:16px;border:1px solid #e3e8f1;border-radius:14px;background:#fbfcfe}.msb-more>summary{cursor:pointer;padding:13px 16px;font-weight:800;font-size:14px;color:#0e2a55;list-style:none}.msb-more>summary::-webkit-details-marker{display:none}
 .msb-more>summary::before{content:'▸';display:inline-block;margin-right:9px;transition:transform .2s;color:#8a6a1f}.msb-more[open]>summary::before{transform:rotate(90deg)}.msb-more>summary small{font-weight:500;color:#5d6b82}
 .msb-more .in{padding:0 16px 14px}
@@ -869,11 +895,16 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               {sec.q <= 60 ? <div className="dots" role="img" aria-label={`${Math.min(myCount, sec.q)} of ${sec.q} questions added`}>{Array.from({ length: sec.q }, (_, i) => <i key={i} className={i < myCount ? 'on' : i === myCount ? 'next' : ''} />)}</div>
                 : <MiniBar pct={(myCount / sec.q) * 100} width={'100%'} />}
               <div className="msg">{signoff(testNo, section) ? <><Icon name="check" size={15} stroke={2.6} />Verified — this section is locked in. Well done.</>
-                : myCount >= sec.q ? <><Icon name="check" size={15} stroke={2.6} />Section complete — it is ready for verification.</>
+                : myCount >= sec.q ? <><Icon name="check" size={15} stroke={2.6} />Section complete — it is ready for verification.{strictPlan ? ` New questions you add now go to the Practice bank (${section} · Set ${practiceSetFor(section)}).` : ''}</>
                   : myCount === 0 ? <>Let's begin. Choose how you want to add questions below — your first one takes about a minute.</>
                     : myCount < sec.q / 2 ? <>Good start. {sec.q - myCount} more to go — every question is saved the moment you add it.</>
                       : <>Over halfway. Just {sec.q - myCount} more.</>}</div>
             </div>)}
+            {strictPlan && (chapters.length ? (
+              <div className="msb-rule" role="note"><Icon name="syllabus" size={18} /><span><b>The paper holds {sec.q} questions per section.</b> Only {chapters.length === 1 ? 'the planned chapter is' : 'the planned chapters are'} accepted. Extra questions are saved to the Practice bank ({section} · Set {practiceSetFor(section)}) under the same chapter.</span></div>
+            ) : (
+              <div className="msb-rule warn" role="note"><Icon name="alert" size={18} /><span><b>No chapter is planned yet</b> for {tid(testNo)} · {sec.short || section} (Mission Sainik → Syllabus). Any chapter is accepted until it is. The paper holds {sec.q}; extras go to the Practice bank.</span></div>
+            ))}
             {chapters.length > 0 && (
               <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
                 <datalist id="msb-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
@@ -895,7 +926,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               {(addMode === 'cards' ? ['Fill one card per question', 'Mark the answer (Alt + A to D)', 'Upload all cards together'] : ['Paste text or load a file', 'Check the preview it builds', 'Upload when it looks right']).map((t, i) => <span key={t}><i>{i + 1}</i>{t}</span>)}
             </div>}
             {addMode === 'one' ? (
-              <MissionSainikQuickAdd chapters={chaptersOf(testNo, section)} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
+              <MissionSainikQuickAdd key={`${testNo}:${section}`} chapters={chaptersOf(testNo, section)} strict={strictPlan && chaptersOf(testNo, section).length > 0} overflowLabel={strictPlan ? `${section} · Practice Set ${practiceSetFor(section)}` : ''} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
             ) : addMode === 'cards' ? (
               <>
                 <MultiQuestionAdder noExplanation chapters={chaptersOf(testNo, section)} key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
