@@ -48,7 +48,7 @@ import { buildPlanDocx, buildTableDocx, downloadDocx } from './lib/missionSainik
 import { meritList } from './lib/missionSainikMerit'
 import {
   ORDER_NO as DEFAULT_ORDER_NO, ORDER_DATE as DEFAULT_ORDER_DATE, SUBMISSION_DEADLINE as DEFAULT_DEADLINE, SUBJECTS, PANEL, TESTS, JNVST,
-  buildSeedRows, PRACTICE_PANEL, fullName, STATUS_FLOW, nameMatches, safeUrl, EXAM_DATE as DEFAULT_EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
+  buildSeedRows, PRACTICE_PANEL, fullName, STATUS_FLOW, nameMatches, matchesOne, staffMatching, safeUrl, EXAM_DATE as DEFAULT_EXAM_DATE, MOCK_TESTS, MOCK_SECTIONS,
 } from './missionSainikData'
 
 const TABLE = 'mission_sainik_tasks'
@@ -372,7 +372,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
       .then(({ data }) => { try { if (data?.value) setInstitute(i => ({ ...i, ...JSON.parse(data.value) })) } catch { /* keep defaults */ } }, () => {})
   }, [])
 
-  const isMe = name => nameMatches(currentUser?.matchName, name)
+  const isMe = name => matchesOne(currentUser?.matchName, name, staffDir)   // a panel name counts only when it points at exactly one staff member
   // Where the logged-in teacher sits on the Panel: [{ subject, role }]. Home and Study material use it, so the panel setup carries through the other tabs.
   const myPanel = (panelRows.length ? panelRows.map(r => ({ key: r.subject_key, name: r.name, role: r.role }))
     : SUBJECTS.flatMap(x => [...PANEL[x.key].map(name => ({ key: x.key, name, role: 'setter' })), { key: x.key, name: PRACTICE_PANEL[x.key].verifier, role: 'verifier' }, ...PRACTICE_PANEL[x.key].assistants.map(name => ({ key: x.key, name, role: 'assistant' }))]))
@@ -1317,6 +1317,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
                     </span>
                     <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       {m.role === 'assistant' && cover && <span title={`${cover.qs} practice questions so far. Every practice teacher sets questions for every test.`} style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12.5, fontWeight: 800, color: cover.done === cover.total ? '#0f7a4c' : PX.navy }}><span style={{ width: 70, height: 7, borderRadius: 99, background: '#e3e8f0', overflow: 'hidden' }}><span style={{ display: 'block', width: Math.round((cover.done / cover.total) * 100) + '%', height: '100%', background: cover.done === cover.total ? '#16a34a' : '#1d4f91' }} /></span>{cover.done}/{cover.total} tests</span>}
+                      {staffMatching(m.name, staffDir).length > 1 && <Pill tone="bad" title={`“${m.name}” matches ${staffMatching(m.name, staffDir).join(', ')}. It identifies nobody until you use a more specific name.`}>⚠ matches {staffMatching(m.name, staffDir).length} staff</Pill>}
                       <Pill tone={ROLE_TONE[m.role]} dot={false}>{roleLabel(m.role)}</Pill>
                       {!m.builtin && isRealAdmin && <><button className="px-hbtn" onClick={() => setPanelDraft({ id: m.id, subject_key: m.subject_key, name: m.name, role: m.role, question_quota: m.question_quota ?? '', ...(m.role === 'setter' ? { test_count: pre.length, test_count_was: pre.length } : {}) })} aria-label={`Edit ${m.name}`}>✎</button>
                         <button className="px-hbtn" onClick={() => deletePanelMember(m)} aria-label={`Remove ${m.name}`}>🗑</button></>}
@@ -1710,7 +1711,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
             {tab === 'overview' && <><MissionSainikHome myPanel={myPanel} upcoming={upcoming} announcement={settings.announcement} name={currentUser?.name} stats={homeStats} game={game} nextTask={nextTask} onGo={setTab} onOpenTask={setSel} quick={quick} isMobile={isMobile} flow={<FlowTracker flow={flowSteps} progress={flowProgress} onGo={setTab} />} />{Overview()}</>}
             {tab === 'schedule' && Schedule()}
             {['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(tab) && <MissionSainikBuilder key={tab + '-' + bStart.n} startTest={tab === 'practicebuilder' && bStart.section ? bStart.test : undefined} startSection={tab === 'practicebuilder' && bStart.section ? bStart.section : undefined} series={{ prebuilder: 'pre', megabuilder: 'mega', dailybuilder: 'daily', practicebuilder: 'practice' }[tab]} tasks={rows} saveTask={saveTask}
-              practiceQ={practiceQMap} syllabus={syl} onSetting={async (key, on) => { if (on) await putSetting(key, 'on'); else await delSetting(key) }} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
+              practiceQ={practiceQMap} staffNames={staffDir.map(x => x.name)} syllabus={syl} onSetting={async (key, on) => { if (on) await putSetting(key, 'on'); else await delSetting(key) }} currentUser={currentUser} setMsg={setMsg} isMobile={isMobile} institute={institute} embargo={embargo} audit={audit} today={today} panel={panelForBuilder} locks={settings} onLock={async (key, on) => { if (on) { if (await putSetting(key, 'on')) setMsg('🔒 Paper locked') } else if (await delSetting(key)) setMsg('🔓 Paper unlocked') }} />}
             {tab === 'activity' && Activity()}
             {tab === 'insights' && Insights()}
             {(tab === 'premock' || tab === 'megamock') && <MockTestAnalyzer key={tab} scope={tab === 'premock' ? 'pre' : 'mega'} institute={institute} currentUser={currentUser} canUpload canDelete={isRealAdmin} />}
@@ -1822,7 +1823,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
           </div>
         </div>
       )}
-      {sel && <TaskDialog key={sel.id} people={peopleAll} onDelete={isRealAdmin ? deleteTask : undefined} deadline={SUBMISSION_DEADLINE} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
+      {sel && <TaskDialog key={sel.id} people={peopleAll} onDelete={isRealAdmin ? deleteTask : undefined} deadline={SUBMISSION_DEADLINE} chapter={syl[sel.test_no + '|' + sel.subject]} sel={sel} today={today} isAdmin={isRealAdmin} allowed={allowedStatuses(sel)} busy={busy} onSave={saveTask} onClose={() => setSel(null)} />}
     </div>
   )
 }

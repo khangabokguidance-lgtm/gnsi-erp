@@ -5,7 +5,7 @@ import { useState, useMemo } from 'react'
 import { supabase } from './supabase'
 import { PremiumCard, PX } from './premiumUI'
 import { Pill, Avatar } from './MissionSainikUI'
-import { fullName } from './missionSainikData'
+import { fullName, staffMatching } from './missionSainikData'
 import { addableTeachers } from './lib/missionSainikAllot'
 import { staffOptions } from './lib/teacherPick'
 
@@ -74,6 +74,7 @@ export default function MissionSainikPracticePlan({ questionsPer = () => 25, cov
                   <div style={{ fontSize: 12, fontWeight: 800, color: c.done === c.total ? '#0f7a4c' : PX.navy, marginBottom: 3 }}>{c.done} of {c.total} tests done</div>
                   <div style={{ height: 8, borderRadius: 99, background: '#e3e8f0', overflow: 'hidden' }} role="img" aria-label={`${c.done} of ${c.total} tests done`}><div style={{ width: pct + '%', height: '100%', borderRadius: 99, background: c.done === c.total ? '#16a34a' : tone }} /></div>
                 </div>
+                {staffMatching(r.setter, staffDir).length > 1 && <Pill tone="bad" title={`“${r.setter}” matches ${staffMatching(r.setter, staffDir).join(', ')}. It identifies nobody until you use a more specific name.`}>⚠ matches {staffMatching(r.setter, staffDir).length} staff</Pill>}
                 <Pill tone={STATUS_TONE[r.status] || 'mute'}>{r.status}</Pill>
                 {isAdmin && <button type="button" className="px-hbtn" disabled={busy} onClick={() => removeTeacher(r)} aria-label={`Remove ${r.setter} from ${sub.label} practice`} style={{ width: 32, height: 32, padding: 0 }}>✕</button>}
               </div>)

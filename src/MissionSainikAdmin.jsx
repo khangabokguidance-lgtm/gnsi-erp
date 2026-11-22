@@ -137,6 +137,16 @@ export default function MissionSainikAdmin({ rows, settings, putSetting, delSett
           <span><b>Enforce the syllabus plan and the 25 limit in the database</b>
             <span style={{ display: 'block', fontSize: 12.5, color: PX.sub, marginTop: 3, lineHeight: 1.5 }}>Pre Mock and Practice questions must be on the chapter the plan gives that test (exactly one chapter), and a Pre Mock section holds 25 questions (per teacher while “multiple sets” is on). Who may upload is still checked by the app only. Run migration <code>20261223</code> in Supabase first.</span></span>
         </label>
+        <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start', cursor: 'pointer', marginTop: 16, paddingTop: 14, borderTop: `1px solid ${PX.line}` }}>
+          <input type="checkbox" checked={settings.enforce_setters === 'on'} style={{ marginTop: 4, width: 20, height: 20 }} onChange={async e => {
+            if (e.target.checked) {
+              if (!window.confirm('Switch on setter rules in the database?\n\nNeeds migration 20261224 in Supabase. Then only the section\'s allotted setter can add Pre Mock, Mock and Practice questions (admins cannot), “uploaded by” is stamped by the database, and only admins can change who sets and verifies.\n\nFirst make sure: the panel is loaded (Panel → Load from notice), every staff member\'s login is linked to their staff profile, and every test and section has a setter in the allotment.')) return
+              if (await putSetting('enforce_setters', 'on')) { audit('enforce_setters', null, { on: true }); setMsg('🔒 Setter rules are ON in the database') }
+            } else if (await delSetting('enforce_setters')) { audit('enforce_setters', null, { on: false }); setMsg('Setter rules are OFF in the database') }
+          }} />
+          <span><b>Enforce setters in the database</b>
+            <span style={{ display: 'block', fontSize: 12.5, color: PX.sub, marginTop: 3, lineHeight: 1.5 }}>Only the section’s allotted setter can add questions; the database stamps who uploaded them; only admins change who sets and verifies. A panel name that matches several staff identifies nobody. Run migration <code>20261224</code> first and check the panel, staff links and allotment as the prompt says.</span></span>
+        </label>
       </PremiumCard>
       <PremiumCard title="Reminder to all teachers" subtitle="One message listing everyone's pending sections — paste it into your WhatsApp group"
         right={<span style={{ display: 'flex', gap: 8 }}><button className="px-hbtn" disabled={!reminder} onClick={() => copy(reminder)}>Copy</button><button className="px-hbtn" disabled={!reminder} onClick={() => window.open('https://wa.me/?text=' + encodeURIComponent(reminder), '_blank', 'noopener')}>💬 WhatsApp</button></span>}>

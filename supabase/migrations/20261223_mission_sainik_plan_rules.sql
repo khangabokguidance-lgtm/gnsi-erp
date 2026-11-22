@@ -49,6 +49,8 @@ begin
   end if;
 
   if new.series = 'pre' then
+    -- Two people uploading to the same section at the same moment would both see "24 so far". Taking a lock per section makes them go one after the other.
+    perform pg_advisory_xact_lock(hashtextextended('mission_sainik:' || new.series || ':' || new.test_no || ':' || new.section, 0));
     per_teacher := exists (select 1 from public.mission_sainik_settings where key = 'pre_versions' and value = 'on');
     select count(*) into have from public.mission_sainik_questions q
       where q.series = 'pre' and q.test_no = new.test_no and q.section = new.section and q.deleted_at is null
