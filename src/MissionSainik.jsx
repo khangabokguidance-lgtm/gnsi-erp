@@ -304,6 +304,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   const panelForBuilder = panelRows.length ? {
     setters: Object.fromEntries(SUBJECTS.map(x => [x.key, panelSetters(x.key)])),
     practice: Object.fromEntries(SUBJECTS.map(x => [x.key, panelRows.filter(r => r.subject_key === x.key && r.role !== 'setter').map(r => r.name)])),
+    practiceSetters: Object.fromEntries(SUBJECTS.map(x => [x.key, panelRows.filter(r => r.subject_key === x.key && r.role === 'assistant').map(r => r.name)])),   // only these upload practice questions
   } : null
   const peopleAll = panelRows.length ? [...new Set(panelRows.map(r => r.name))].sort() : ALL_PEOPLE
   const loadSettings = useCallback(async () => {

@@ -149,14 +149,15 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const avail = (t, s) => !s.sets || t <= s.sets                       // practice: not every subject has a 3rd set
   const live = t => cfg.sections.filter(s => avail(t, s))
   const section = (live(testNo).find(s => s.label === sectionSel) || live(testNo)[0]).label   // falls back when a set lacks this subject
-  const testReady = t => live(t).every(s => (byVersion ? flavourStatus(get(t, s.label), s.q) === 'ok' : get(t, s.label).length >= s.q))
+  const testReady = t => live(t).every(s => (byVersion ? flavourStatus(setRows(t, s.label), s.q) === 'ok' : get(t, s.label).length >= s.q))
   const testCount = t => live(t).reduce((a, s) => a + Math.min(get(t, s.label).length, s.q), 0)
   const totalQ = t => live(t).reduce((a, s) => a + s.q, 0)
 
   const mineAt = (t, s) => !isAdmin && settersOf(t, s.label).some(isMe)
   // Who may upload to a section: its setter (Pre Mock: the allotted setter; Mega Mock: the panel of its subjects) or an admin.
+  const practicePanelOf = s => { const key = cfg.sections.find(x => x.label === s)?.key; if (panel?.practice?.[key]?.length) return panel.practice[key]; const p = PRACTICE_PANEL[key]; return p ? [p.verifier, ...p.assistants] : [] }   // setters + verifier
   const settersOf = (t, s) => cfg.panel === 'practice'
-    ? (() => { const key = cfg.sections.find(x => x.label === s)?.key; if (panel?.practice?.[key]?.length) return panel.practice[key]; const p = PRACTICE_PANEL[key]; return p ? [p.verifier, ...p.assistants] : [] })()
+    ? (() => { const key = cfg.sections.find(x => x.label === s)?.key; if (panel?.practiceSetters?.[key]?.length) return panel.practiceSetters[key]; return PRACTICE_PANEL[key]?.assistants || [] })()   // only the practice SETTERS upload; the verifier does not
     : series === 'pre'
     ? (tasks || []).filter(r => r.kind === 'test' && r.test_no === t && r.subject === s).flatMap(r => [r.setter, ...String(r.co_setters || '').split(';').map(x => x.trim())].filter(Boolean))
     : (MEGA_PANEL[s] || []).flatMap(k => (panel?.setters?.[k] ?? PANEL[k]) || [])
@@ -171,7 +172,10 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const embargoed = (t, s) => !!embargo && !!dateOf(t) && !!today && today < dateOf(t) && !canEdit(t, s)
   const signoff = (t, s) => signoffs.find(x => x.test_no === t && x.section === s)
   // Verifier: a different person from the uploader (admins may always verify).
-  const verifiersOf = (t, s) => (cfg.panel === 'practice' || series === 'mega') ? settersOf(t, s)
+  // Practice: only the practice setters' own sets decide whether a test is complete. A Pre Mock setter's overflow questions sit in the same
+  // practice test, but must not make it look unfinished (they are not a set of their own). Without any setter's questions, show what exists.
+  const setRows = (t, s) => { const all = get(t, s); if (series !== 'practice') return all; const own = all.filter(q => settersOf(t, s).some(n => nameMatches(q.uploaded_by, n))); return own.length ? own : all }
+  const verifiersOf = (t, s) => cfg.panel === 'practice' ? practicePanelOf(s) : series === 'mega' ? settersOf(t, s)
     : (tasks || []).filter(r => r.kind === 'test' && r.test_no === t && r.subject === s).map(r => r.verifier).filter(Boolean)
   const notesOf = (t, s) => reviews.filter(r => r.test_no === t && r.section === s)
   const openNotes = (t, s) => notesOf(t, s).filter(r => r.status === 'open').length
@@ -194,7 +198,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     const mine = list.every(q => nameMatches(q.uploaded_by, (currentUser?.matchName || currentUser?.name)?.split(/\s+/)[0]) || q.uploaded_by === currentUser?.name)
     return verifiersOf(t, s).some(isMe) && !mine
   }
-  const clearSignoff = async (t, s) => { if (signoff(t, s)) await supabase.from('mission_sainik_signoffs').delete().eq('series', series).eq('test_no', t).eq('section', s) }
+  const clearSignoff = async (t, s) => { if (signoff(t, s)) { await supabase.from('mission_sainik_signoffs').delete().eq('series', series).eq('test_no', t).eq('section', s); setSignoffs(a => a.filter(x => !(x.test_no === t && x.section === s))) } }
   const verify = async (t, s) => {
     if (!canVerify(t, s)) return setMsg('❌ A different panel member (not the uploader) must verify.')
     if (chapterRule) {
@@ -248,7 +252,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     setBusy(true)
     const rows = paperList.map(q => ({ ...q, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
     const xrows = extra.map(q => ({ ...q, series: 'practice', test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
-    const { error } = await supabase.from(TABLE).insert([...rows, ...xrows])
+    const { data: inserted, error } = await supabase.from(TABLE).insert([...rows, ...xrows]).select()
     setBusy(false)
     if (error) { setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : '')); return false }
     if (clear) { setText(''); setCards([blankCard()]) }
@@ -256,7 +260,8 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     setMsg(rows.length ? `✅ ${rows.length === 1 ? 'Question' : rows.length + ' questions'} added to ${tid(testNo)} · ${section} · ${Math.min(have + rows.length, sec.q)} of ${sec.q}${xTxt ? ' — ' + xTxt : ''}` : `✅ ${tid(testNo)} · ${section} is full (${sec.q}). ${xTxt}`)
     audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length, ...(xrows.length ? { to_practice: xrows.length, practice_test: testNo } : {}) })
     await clearSignoff(testNo, section)
-    await load()
+    // Add just the new rows to the screen. Re-downloading the whole question bank after every save is slow once thousands of questions exist.
+    if (Array.isArray(inserted) && inserted.length === rows.length + xrows.length) { const mine = inserted.filter(r => r.series === series); if (mine.length) setQs(prev => [...prev, ...mine]) } else await load()
     // Pre Mock: when the section is complete, mark the allotted task as submitted automatically.
     if (series === 'pre' && (byVersion ? flavourStatus([...get(testNo, section), ...rows], sec.q) === 'ok' : have + rows.length >= sec.q)) {
       const task = (tasks || []).find(r => r.kind === 'test' && r.test_no === testNo && r.subject === section)
@@ -286,6 +291,16 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     if (!canEdit(q.test_no, q.section)) return
     if (!window.confirm('Delete this question?' + (soft ? ' (it goes to the recycle bin)' : ' This cannot be undone.'))) return
     await removeRows(x => x.eq('id', q.id), `${series}:${q.test_no}:${q.section}`, 1)
+  }
+  // Questions with NO chapter get the section's one planned chapter in a single step. Questions on a different chapter are never changed: someone must look at those.
+  const tagUntagged = async () => {
+    const pl = chaptersOf(testNo, section), ids = get(testNo, section).filter(q => !String(q.topic || '').trim()).map(q => q.id)
+    if (pl.length !== 1 || !ids.length || !canEdit(testNo, section)) return
+    if (!window.confirm(`Tag ${ids.length} question${ids.length === 1 ? '' : 's'} with no chapter as “${pl[0]}”?\n\nQuestions already on another chapter are not changed. Verification is reset.`)) return
+    const { error } = await supabase.from(TABLE).update({ topic: pl[0] }).in('id', ids)
+    if (error) return setMsg('❌ ' + error.message)
+    audit('tag_chapter', `${series}:${testNo}:${section}`, { count: ids.length, chapter: pl[0] })
+    await clearSignoff(testNo, section); setMsg(`✅ ${ids.length} question${ids.length === 1 ? '' : 's'} tagged “${pl[0]}”`); load()
   }
   const clearSection = async () => {
     const list = get(testNo, section)
@@ -371,7 +386,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const SET_LETTERS = ['A', 'B', 'C', 'D']
   const assemble = (t, setIdx = 0) => printLive(t).map(sc => {
     // Practice bank: Version A is the first teacher's own set, B the second's … Other series: the admin's chosen questions (or the first q).
-    let items = byVersion ? flavourItems(get(t, sc.label), sc.q, setIdx) : usedQuestions(get(t, sc.label), sc.q)
+    let items = byVersion ? flavourItems(setRows(t, sc.label), sc.q, setIdx) : usedQuestions(get(t, sc.label), sc.q)
     if (ver.shuffleQ || ver.shuffleOpts) items = makeVersion(items, { seed: `${series}|${t}|${sc.label}|${SET_LETTERS[setIdx]}`, shuffleQ: ver.shuffleQ, shuffleOpts: ver.shuffleOpts })
     return { ...sc, from: startOf(sc.label), items: items.map((q, i) => ({ ...q, no: startOf(sc.label) + i })) }
   })
@@ -607,7 +622,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const pickFirst = () => { const list = get(testNo, section), keep = new Set(list.slice(0, sec.q).map(x => x.id)); const clear = list.filter(x => x.in_paper && !keep.has(x.id)).map(x => x.id); return savePicks(list.filter(x => keep.has(x.id) && !x.in_paper).map(x => x.id), true, 'first').then(() => clear.length && savePicks(clear, false, 'first-clear')) }
   const clearPicks = () => savePicks(get(testNo, section).filter(x => x.in_paper).map(x => x.id), false, 'clear')
   // Practice bank: print one version per teacher's set (up to 4) so students get different flavours; the admin can still change it in Paper tools.
-  const flavourCount = byVersion ? Math.max(1, ...live(testNo).map(x => flavours(get(testNo, x.label), x.q).filter(f => f.complete).length)) : 1
+  const flavourCount = byVersion ? Math.max(1, ...live(testNo).map(x => flavours(setRows(testNo, x.label), x.q).filter(f => f.complete).length)) : 1
   useEffect(() => { if (byVersion && flavourCount > 1) setVer(v => (v.sets < Math.min(4, flavourCount) ? { ...v, sets: Math.min(4, flavourCount) } : v)) }, [byVersion, flavourCount, testNo]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!isMobile || typeof IntersectionObserver === 'undefined') return undefined
@@ -616,11 +631,10 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     io.observe(el)
     return () => io.disconnect()
   }, [isMobile, testNo, section, addMode])
-  const secStatus = (t, s) => { if (byVersion) return flavourStatus(get(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
+  const secStatus = (t, s) => { if (byVersion) return flavourStatus(setRows(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
   const sec = cfg.sections.find(s => s.label === section)
   const secList = get(testNo, sec.label)
   const mayEdit = canEdit(testNo, sec.label)
-  const mayAdd = canUpload(testNo, sec.label)   // may add questions (setter only on Pre Mock, Mock and Practice)
   const pickInfo = pickSummary(secList, sec.q), contribs = contributors(secList, sec.q)
   const usedList = usedQuestions(secList, sec.q), usedIds = new Set(usedList.map(x => x.id))
   const multiTeachers = contribs.length > 1
@@ -634,10 +648,11 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const normT = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
   const chapterCount = ch => secList.filter(q => normT(q.topic) === normT(ch)).length
   const untagged = chapters.length ? secList.filter(q => !chapters.some(ch => normT(ch) === normT(q.topic))).length : 0
-  const flav = flavours(secList, sec.q)
+  const flav = flavours(setRows(testNo, sec.label), sec.q)
   const secHue = SUBJ_HUE[sec.key] || Object.values(SUBJ_HUE)[Math.max(0, cfg.sections.indexOf(sec)) % 6]
   const myCount = byVersion ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
-  const overview = byVersion && myCount === 0 && secList.length > 0 && !settersOf(testNo, section).some(isMe)   // an admin / verifier looking at other teachers' sets, not a setter with a set of their own
+  const mayAdd = canUpload(testNo, sec.label)   // may add questions (setter only on Pre Mock, Mock and Practice)
+  const overview = !mayAdd || (byVersion && myCount === 0 && secList.length > 0 && !settersOf(testNo, section).some(isMe))   // an admin / verifier looking at the section, not a setter with a set of their own
   const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
   const limN = lim.k === `${testNo}|${section}|${qSearch}|${qLevel}` ? lim.n : 10
   const ready = testReady(testNo)
@@ -786,8 +801,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             const n = get(testNo, s.label).length, st = secStatus(testNo, s)
             const ups = [...new Set(get(testNo, s.label).map(q => q.uploaded_by).filter(Boolean))]
             const hue = SUBJ_HUE[s.key] || Object.values(SUBJ_HUE)[si % 6], on = s.label === section
-            const verified = !!signoff(testNo, s.label), full = byVersion ? flavourStatus(get(testNo, s.label), s.q) === 'ok' : n >= s.q
-            const label = byVersion ? (() => { const f = flavours(get(testNo, s.label), s.q); return f.length > 1 ? `${f.filter(x => x.complete).length}/${f.length} sets` : `${n}/${s.q}` })() : `${n}/${s.q}`
+            const verified = !!signoff(testNo, s.label), full = byVersion ? flavourStatus(setRows(testNo, s.label), s.q) === 'ok' : n >= s.q
+            const label = byVersion ? (() => { const f = flavours(setRows(testNo, s.label), s.q); return f.length > 1 ? `${f.filter(x => x.complete).length}/${f.length} sets` : `${n}/${s.q}` })() : `${n}/${s.q}`
             const who = ups.length ? ups.map(fullName).join(', ') : settersOf(testNo, s.label).map(fullName).join(', ') || '—'
             return (
               <button key={s.label} type="button" className={'msb-tile' + (on ? ' on' : '')} aria-pressed={on} onClick={() => setSection(s.label)} style={{ '--c': hue }}>
@@ -909,16 +924,17 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 
       <div id="msb-editor" style={{ scrollMarginTop: 140 }}>
       <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${byVersion && flav.length > 1 ? `${flav.length} teachers · yours ${myCount}/${sec.q}` : (secList.length > sec.q ? `${secList.length} uploaded · ${sec.q} needed` : `${secList.length}/${sec.q} questions`)} · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
-        right={<span style={{ display: 'flex', gap: 8 }}>{(byVersion ? flavourStatus(secList, sec.q) === 'ok' : secList.length >= sec.q) && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
-        {mayAdd ? (
-          <>
+        right={<span style={{ display: 'flex', gap: 8 }}>{(byVersion ? flavourStatus(setRows(testNo, sec.label), sec.q) === 'ok' : secList.length >= sec.q) && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
             {overview ? (
               <div className="msb-prog" style={{ '--c': secHue }}>
                 <div className="hd"><span className="ttl">{sec.short || section} · section overview</span><span className="cnt"><b>{secList.length}</b> uploaded · {sec.q} needed</span></div>
-                <div className="chipsrow">{flav.map(f => <span key={f.by} className={f.complete ? 'ok' : 'part'}><i>{f.letter}</i>{fullName(f.by)} · {Math.min(f.count, sec.q)}/{sec.q}{f.complete ? <Icon name="check" size={12} stroke={3} /> : null}</span>)}</div>
+                {(byVersion ? flav.length > 0 : contribs.length > 0) && <div className="chipsrow">{byVersion
+                  ? flav.map(f => <span key={f.by} className={f.complete ? 'ok' : 'part'}><i>{f.letter}</i>{fullName(f.by)} · {Math.min(f.count, sec.q)}/{sec.q}{f.complete ? <Icon name="check" size={12} stroke={3} /> : null}</span>)
+                  : contribs.map(c => <span key={c.name} className="ok"><i>{String(fullName(c.name)).replace(/^Sir |^Miss /, '').charAt(0)}</i>{fullName(c.name)} · {c.n}</span>)}</div>}
                 <div className="msg">{signoff(testNo, section) ? <><Icon name="check" size={15} stroke={2.6} />Verified — this section is locked in.</>
-                  : flav.length && flav.every(f => f.complete) ? <><Icon name="check" size={15} stroke={2.6} />{flav.length === 1 ? 'The set is complete' : `All ${flav.length} sets are complete`} — ready for verification. You can still add questions below.</>
-                    : <>{flav.filter(f => f.complete).length} of {flav.length} set{flav.length === 1 ? '' : 's'} complete. You can add questions below, or wait for the setters.</>}</div>
+                  : (byVersion ? flav.length > 0 && flav.every(f => f.complete) : secList.length >= sec.q) ? <><Icon name="check" size={15} stroke={2.6} />{byVersion && flav.length > 1 ? `All ${flav.length} sets are complete` : 'The section is complete'} — ready for verification.</>
+                    : secList.length === 0 ? <>Nothing uploaded yet. Waiting for {[...new Set(settersOf(testNo, section).map(fullName))].join(' / ') || 'a setter to be allotted'}.</>
+                      : byVersion ? <>{flav.filter(f => f.complete).length} of {flav.length} set{flav.length === 1 ? '' : 's'} complete.</> : <>{secList.length} of {sec.q} questions in so far.</>}</div>
               </div>
             ) : (
             <div className="msb-prog" style={{ '--c': secHue }}>
@@ -932,7 +948,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                       : <>Over halfway. Just {sec.q - myCount} more.</>}</div>
             </div>)}
             {chapterRule && planState(chapters) === 'multi' && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>The plan lists {chapters.length} chapters for {tid(testNo)} · {sec.short || section}.</b> Every teacher must set the one same chapter, so uploads are paused. An admin must keep just one in Mission Sainik → Syllabus.</span></div>}
-            {offList.length > 0 && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>{offList.length} question{offList.length === 1 ? ' is' : 's are'} not on the planned chapter “{chapters[0]}”.</b> They are marked <i>Off plan</i> below. Fix or delete {offList.length === 1 ? 'it' : 'them'}; the section cannot be verified until then.</span></div>}
+            {offList.length > 0 && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>{offList.length} question{offList.length === 1 ? ' is' : 's are'} not on the planned chapter “{chapters[0]}”.</b> They are marked <i>Off plan</i> below. Fix or delete {offList.length === 1 ? 'it' : 'them'}; the section cannot be verified until then.</span>{mayEdit && offList.some(q => !String(q.topic || '').trim()) && <button type="button" className="px-btn ghost" style={{ marginLeft: 'auto', flex: 'none' }} onClick={tagUntagged}>Tag {offList.filter(q => !String(q.topic || '').trim()).length} untagged as this chapter</button>}</div>}
             {chapterRule && (chapters.length ? (
               <div className="msb-rule" role="note"><Icon name="syllabus" size={18} />{strictPlan
                 ? <span><b>The paper holds {sec.q} questions per section.</b> Only {chapters.length === 1 ? 'the planned chapter is' : 'the planned chapters are'} accepted. Extra questions are saved to the practice set for {tid(testNo)} ({section}) under the same chapter.</span>
@@ -940,6 +956,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             ) : (
               <div className="msb-rule warn" role="note"><Icon name="alert" size={18} /><span><b>No chapter is planned yet</b> for {tid(testNo)} · {sec.short || section} (Mission Sainik → Syllabus). Any chapter is accepted until it is.{strictPlan ? ` The paper holds ${sec.q}; extras go to the practice set for ${tid(testNo)}.` : ''}</span></div>
             ))}
+        {mayAdd ? (
+          <>
             {chapters.length > 0 && (
               <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
                 <datalist id="msb-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
