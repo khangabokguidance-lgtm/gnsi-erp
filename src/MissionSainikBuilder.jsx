@@ -7,6 +7,7 @@ import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
 import MissionSainikQuickAdd from './MissionSainikQuickAdd'
+import MissionSainikEasyUpload from './MissionSainikEasyUpload'
 import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems, PastePreview } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import ScanFigure from './ScanFigure'
@@ -17,6 +18,7 @@ import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
+import { combinedHtml, canBuildCombined, testsAllowed } from './lib/missionSainikCombined'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
@@ -294,6 +296,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   }
   // Backup: the whole bank of this series as CSV (answers included), formula-injection safe.
   const exportCsv = () => {
+    if (!isAdmin) return setMsg('🔒 Only an admin can export the whole question bank. Use “This section” for your own subject.')
     const cell = v => { const t = String(v ?? ''); return '"' + (/^[=+\-@\t\r]/.test(t) ? "'" + t : t).replace(/"/g, '""') + '"' }
     const head = ['Series', 'Test', 'Section', 'Q no', 'Question', 'A', 'B', 'C', 'D', 'Answer', 'Explanation', 'Topic', 'Level', 'Uploaded by', 'Verified by']
     const lines = [head.map(cell).join(',')]
@@ -444,15 +447,16 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${brandCss}${previewCss}</style></head><body>${brand.watermark?.trim() ? `<div class="wm">${esc(brand.watermark.trim())}</div>` : ''}${brand.footer?.trim() ? `<div class="ftr">${esc(brand.footer.trim())}</div>` : ''}${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(cfg.name).toUpperCase()} TEST (MODEL SET) ●● MISSION SAINIK 2027</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
   const docTitle = (t, key) => `${cfg.noun === 'Set' ? 'Practice Set ' + t : cfg.prefix + '-' + String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
   const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
+  const keyDenied = key => { if (key && !isAdmin) { setMsg('🔒 Only an admin can print or export the answer key of a whole test.'); return true } return false }
   const printDoc = (t, key) => {
-    if (!ready0(t)) return
+    if (keyDenied(key) || !ready0(t)) return
     audit(key ? 'print_key' : 'print_paper', `${series}:${t}`, { verified: live(t).every(x => signoff(t, x.label)), sets: ver.sets, shuffled: ver.shuffleQ || ver.shuffleOpts })
     const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
     w.document.write(shell(allBodies(t, key), docTitle(t, key), true)); w.document.close()
   }
-  const previewDoc = (t, key) => { if (!ready0(t)) return; setPreview({ html: shell(allBodies(t, key), docTitle(t, key), false), title: docTitle(t, key) }) }
+  const previewDoc = (t, key) => { if (keyDenied(key) || !ready0(t)) return; setPreview({ html: shell(allBodies(t, key), docTitle(t, key), false), title: docTitle(t, key) }) }
   const exportWord = (t, key) => {
-    if (!ready0(t)) return
+    if (keyDenied(key) || !ready0(t)) return
     setMathStacked(false)
     let html
     try { html = wordWrap(`<style>${ver.layout === 'book' ? bookCss.replace(/@page\{[\s\S]*?\}\}/, '') : docCss}${brandCss.replace(/\.wm\{[^}]*\}|\.ftr\{[^}]*\}/g, '')}</style>` + allBodies(t, key).map(b => `<div style="page-break-after:always">${b}</div>`).join(''), docTitle(t, key))
@@ -460,6 +464,35 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
     const a = document.createElement('a'); a.href = url; a.download = docTitle(t, key).replace(/\s+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
     audit('export_word', `${series}:${t}`, { key })
+  }
+  // ── Combined paper (all subjects) for verification — admins only ──
+  const mayCombine = () => canBuildCombined({ isAdmin })
+  const combinedTests = () => testsAllowed({ isAdmin, testNos: cfg.tests.map(x => x.no) })
+  const combinedDoc = list => {
+    const tests = list.map(t => {
+      const secs = live(t).map(x => {
+        const items = (byVersion ? flavourItems(get(t, x.label), x.q, 0) : usedQuestions(get(t, x.label), x.q)).map((q, i) => ({ ...q, no: startOf(x.label) + i }))
+        const so = signoff(t, x.label)
+        return { label: x.label, q: x.q, from: startOf(x.label), items, setters: settersOf(t, x.label), uploaders: [...new Set(get(t, x.label).map(q => q.uploaded_by).filter(Boolean))], verifier: verifiersOf(t, x.label).join(', '), signoff: so ? { verified_by: so.verified_by } : null, openNotes: openNotes(t, x.label) }
+      })
+      return { id: tid(t), date: dateOf(t) ? fmtShort(dateOf(t)) : '', sections: secs, checks: paperHealth(secs.map(x => ({ label: x.label, q: x.q, items: x.items })), qs, t).checks }
+    })
+    return combinedHtml({ inst: instName, title: `${cfg.name} · combined paper (all subjects)`, tests, preparedBy: currentUser?.name || '', preparedAt: new Date().toLocaleString('en-GB'), esc, math: mathToHtml, extraCss: MATH_CSS + '.oi{max-height:70px}' })
+  }
+  const combinedList = all => { const l = all ? combinedTests() : (mayCombine() ? [testNo] : []); if (!l.length) setMsg('🔒 Only an admin can build the combined paper.'); return l }
+  const previewCombined = all => {
+    const l = combinedList(all); if (!l.length) return
+    audit('combined_paper_preview', `${series}:${l.join(',')}`, null)
+    setPreview({ html: `<!doctype html><html><head><meta charset="utf-8"><title>Combined paper</title></head><body style="margin:0;padding:14px">${combinedDoc(l)}</body></html>`, title: `Combined paper · ${all ? 'all tests' : tid(testNo)}` })
+  }
+  const exportCombined = all => {
+    const l = combinedList(all); if (!l.length) return
+    setMathStacked(false)
+    let html
+    try { html = wordWrap(combinedDoc(l), 'Combined paper') } finally { setMathStacked(true) }
+    const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
+    const a = document.createElement('a'); a.href = url; a.download = `${cfg.prefix}_combined_${all ? 'all_tests' : String(testNo).padStart(2, '0')}.doc`; a.click(); URL.revokeObjectURL(url)
+    audit('combined_paper_export', `${series}:${l.join(',')}`, null)
   }
   const printOmr = t => {
     if (blocked(t)) return setMsg('🔒 Locked until the test date (embargo).')
@@ -563,6 +596,12 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     io.observe(el)
     return () => io.disconnect()
   }, [isMobile, testNo, section, addMode])
+  // Keep the chosen test chip centred in the strip. Only the strip scrolls, and only when the test changes:
+  // scrollIntoView on every render pulled the whole page back up while scrolling on a phone (the Build tab "would not scroll").
+  useEffect(() => {
+    const chip = document.querySelector('.msb .msb-chip.on'), strip = chip?.parentElement
+    if (strip) { const c = chip.getBoundingClientRect(), r = strip.getBoundingClientRect(); strip.scrollLeft = Math.max(0, strip.scrollLeft + (c.left - r.left) - (strip.clientWidth - c.width) / 2) }
+  }, [testNo, series, isMobile])
   const secStatus = (t, s) => { if (byVersion) return flavourStatus(get(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
   const col = st => (st === 'ok' ? PX.ok : st === 'part' ? PX.warn : PX.faint || '#9aa5b8')
   const sec = cfg.sections.find(s => s.label === section)
@@ -589,6 +628,15 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 .msb .msb-strip::-webkit-scrollbar{display:none}.msb .msb-chip{scroll-snap-align:center;flex:0 0 auto;min-width:92px;text-align:left;padding:9px 12px;border-radius:14px;border:2px solid #e8e3d8;background:#fff;cursor:pointer;font-family:inherit}
 .msb .msb-chip.on{border-color:#b8923a;background:#faf1d9}.msb .msb-fab{position:fixed;right:14px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:34;border:none;border-radius:16px;background:#b8923a;color:#fff;font:800 14px inherit;font-family:inherit;padding:14px 18px;box-shadow:0 10px 24px rgba(184,146,58,.5)}
 @media (max-width:640px){.msb input:not([type=checkbox]):not([type=file]),.msb select,.msb textarea{font-size:16px!important}.msb .px-hbtn,.msb .px-btn{min-height:42px}.msb .px-card{border-radius:16px}}`
+  // Easy upload: a staff member sees only their own sections (unfinished first); an admin sees the sections of the test they are on.
+  const easySections = (() => {
+    const own = l => (byVersion ? l.filter(x => x.uploaded_by === (currentUser?.name || '')) : l).length
+    const row = (t, x) => ({ t, label: x.label, short: x.short, need: x.q, have: Math.min(own(get(t, x.label)), 999) })
+    if (isAdmin) return live(testNo).map(x => row(testNo, x))
+    const mine = cfg.tests.flatMap(t => live(t.no).filter(x => mineAt(t.no, x)).map(x => row(t.no, x)))
+    return [...mine.filter(r => r.have < r.need), ...mine.filter(r => r.have >= r.need)].slice(0, 40)
+  })()
+  const easyWhy = isLocked(testNo) ? 'This paper is locked by an admin.' : 'Only this section’s setter (or an admin) can upload here. Tap one of your own sections above.'
   const nextMine = (() => { for (const t of cfg.tests) for (const s of live(t.no)) if (mineAt(t.no, s) && get(t.no, s.label).length < s.q) return { t: t.no, s }; return null })()
   return (
     <div className="msb">
@@ -601,7 +649,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             {cfg.tests.map(t => {
               const n = testCount(t.no), tot = totalQ(t.no), done = testReady(t.no)
               return (
-                <button key={t.no} type="button" role="tab" aria-selected={t.no === testNo} className={'msb-chip' + (t.no === testNo ? ' on' : '')} onClick={() => setTestNo(t.no)} ref={el => { if (el && t.no === testNo) el.scrollIntoView?.({ inline: 'center', block: 'nearest' }) }}>
+                <button key={t.no} type="button" role="tab" aria-selected={t.no === testNo} className={'msb-chip' + (t.no === testNo ? ' on' : '')} onClick={() => setTestNo(t.no)}>
                   <div style={{ fontWeight: 800, color: PX.navy, fontSize: 14 }}>{tid(t.no)}</div>
                   <div style={{ fontSize: 11, color: PX.sub }}>{t.date ? fmtShort(t.date) : cfg.noun === 'Set' ? 'one set per subject' : ' '}</div>
                   <div style={{ height: 5, borderRadius: 99, background: '#f1ede3', margin: '6px 0 3px', overflow: 'hidden' }}><div style={{ width: Math.min(100, tot ? (n / tot) * 100 : 0) + '%', height: '100%', background: done ? PX.ok : PX.gold }} /></div>
@@ -629,8 +677,13 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </table>}
       </PremiumCard>
 
+      <MissionSainikEasyUpload sections={easySections} testNo={testNo} section={section} tid={tid} text={text} setText={setText} mayEdit={mayEdit} why={easyWhy} busy={busy}
+        onPick={(t, label) => { setTestNo(t); setSection(label) }} onFile={loadFile} onUpload={list => insertQuestions(list, { clear: true })}
+        paper={isAdmin ? { ready: live(testNo).filter(x => (byVersion ? flavourStatus(get(testNo, x.label), x.q) === 'ok' : get(testNo, x.label).length >= x.q)).length, total: live(testNo).length, have: testCount(testNo), need: totalQ(testNo) } : null}
+        onPreview={() => previewDoc(testNo, false)} onPrint={() => printDoc(testNo, false)} />
+
       <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{(!embargo || isAdmin) && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isAdmin && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button>{isAdmin && <button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button>}</span>}>
         {isMobile && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <button type="button" className="px-btn ghost" style={{ flex: 1 }} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)}>‹ Previous</button>
@@ -654,8 +707,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </div>
       </PremiumCard>
 
-      {isMobile && !showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· health check, print, Word, OMR</span></span><span>▸</span></button>}
-      {(!isMobile || showTools) && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
+      {(isMobile || !isAdmin) && !showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· health check, print, Word, OMR</span></span><span>▸</span></button>}
+      {((!isMobile && isAdmin) || showTools) && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
         right={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>{isAdmin && onLock && <button className="px-hbtn" onClick={() => onLock(`lock:${series}:${testNo}`, !isLocked(testNo))}>{isLocked(testNo) ? '🔓 Unlock paper' : '🔒 Lock paper'}</button>}<span className="px-hbtn" style={{ pointerEvents: 'none' }}>{health.score}% healthy</span></span>}>
         {isLocked(testNo) && <div role="status" style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0', color: '#5c4510', fontSize: 13, fontWeight: 600 }}>🔒 This paper is locked by an admin. It can be viewed and printed but not changed{isAdmin ? ' (you can, as an admin)' : ''}.</div>}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16 }}>
@@ -748,10 +801,15 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         )}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
           <button className="px-hbtn" onClick={() => previewDoc(testNo, false)}>👁 Preview paper</button>
-          <button className="px-hbtn" onClick={() => previewDoc(testNo, true)}>👁 Preview key</button>
+          {isAdmin && <button className="px-hbtn" onClick={() => previewDoc(testNo, true)}>👁 Preview key</button>}
           <button className="px-hbtn" onClick={() => exportWord(testNo, false)}>📝 Word paper</button>
-          <button className="px-hbtn" onClick={() => exportWord(testNo, true)}>📝 Word key</button>
+          {isAdmin && <button className="px-hbtn" onClick={() => exportWord(testNo, true)}>📝 Word key</button>}
           <button className="px-hbtn" onClick={() => printOmr(testNo)}>⭕ OMR sheet</button>
+          {mayCombine() && <>
+            <button className="px-hbtn" title="All subjects of this test in one file, with answers and sign-off status — admin only" onClick={() => previewCombined(false)}>🧩 Combined paper (verify)</button>
+            <button className="px-hbtn" onClick={() => exportCombined(false)}>📝 Combined Word</button>
+            <button className="px-hbtn" onClick={() => previewCombined(true)}>🧩 All tests</button>
+          </>}
         </div>
       </PremiumCard>}
 
@@ -973,7 +1031,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           canEdit={mayEdit && !embargoed(testNo, section)} hasPictureCols={secList.some(x => 'passage' in x || 'image_data' in x)} isMobile={isMobile} onSave={saveQuestionPatch} onDelete={del} onClose={() => setStudio(null)} setMsg={setMsg} />
       )}
       {scanEdit && editQ && <ScanFigure onDone={u => { setEditQ(q => ({ ...q, image_data: u })); setScanEdit(false) }} onClose={() => setScanEdit(false)} />}
-      {isMobile && mayEdit && !editorInView && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
+      {isMobile && mayEdit && !editorInView && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump(easySections.length ? 'msb-easy' : 'msb-editor')}>{easySections.length ? '⚡ Easy upload' : '＋ Add questions'}</button>}
     </div>
   )
 }

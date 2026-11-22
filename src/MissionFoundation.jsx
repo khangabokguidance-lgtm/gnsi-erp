@@ -22,6 +22,7 @@ import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import TeacherPicker from './TeacherPicker'
 import { staffOptions, staffNameFor } from './lib/teacherPick'
 import { Faces, WithFace } from './MissionFoundationFaces'
+import MissionFoundationBanner from './MissionFoundationBanner'
 import { FOUNDATION_FLOW } from './lib/missionFoundationFlow'
 import { getInstitute } from './systemSettings'
 import { buildTableDocx, downloadDocx } from './lib/missionSainikDocx'
@@ -688,6 +689,7 @@ function MineTab({ photoOf = x => x, papers, testById, me, isAdmin, allTeachers,
 // ─── Teachers (subject panel) ─────────────────────────────────────────────────
 function TeachersTab({ panel, panelFromDb, staffDir, tests, papersByTest, savePaper, isAdmin, me, load, flash }) {
   const [picking, setPicking] = useState(null)   // subject whose teacher picker is open
+  const [bannerOpen, setBannerOpen] = useState(false)
   const staffOpts = useMemo(() => staffOptions(staffDir), [staffDir])
   const [open, setOpen] = useState(null)      // subject whose test-by-test plan is open
   const [busy, setBusy] = useState('')
@@ -771,6 +773,9 @@ function TeachersTab({ panel, panelFromDb, staffDir, tests, papersByTest, savePa
         <PremiumCard title="Teachers from the timetable" subtitle="These are the Udaan and Pragati teachers on the current timetable. Save the list to start editing it."
           right={isAdmin ? <Btn kind="gold" onClick={saveDefaults}>Save this list</Btn> : null} />
       )}
+      <PremiumCard title="Poster banner" subtitle="Mission Foundation poster with the photos of all the question setters — print on A3 or save as PDF."
+        right={<Btn kind="gold" onClick={() => setBannerOpen(true)}>🖼️ Make poster banner</Btn>} />
+      {bannerOpen && <MissionFoundationBanner panel={panel} photoOf={t => staffNameFor(cleanTeacherName(t), staffOpts)} institute={getInstitute() || {}} onClose={() => setBannerOpen(false)} />}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(300px,1fr))', gap: 14 }}>
         {SUBJECTS.map(s => {
           const team = panel[s.label] || []

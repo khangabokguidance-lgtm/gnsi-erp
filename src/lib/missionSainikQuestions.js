@@ -1,5 +1,7 @@
 // Pure helpers for the Mission Sainik question builders (kept out of the component so they can be unit-tested).
 
+import { applyAnswerKey } from './questionPaste.js'
+
 // Free-text format, one question after another:
 //   Q1. question text
 //   A) option   B) option   C) option   D) option   (each on its own line)
@@ -30,7 +32,22 @@ export function parseQuestions(text) {
       push(); cur = { question: m[1].trim(), option_a: '', option_b: '', option_c: '', option_d: '', answer: '', explanation: '', topic: '', difficulty: null, ...(passage ? { passage } : {}) }; field = 'question'; continue
     }
     if (!cur) { if (field === 'passage' && !/^end\s*passage/i.test(ln)) passage = (passage + ' ' + ln).trim(); continue }
-    if ((m = ln.match(/^\(?([A-D])\s*[.):]\s*(.*)$/i))) { field = 'option_' + m[1].toLowerCase(); cur[field] = m[2].trim(); continue }
+    if ((m = ln.match(/^(\()?([A-D])\s*([.):])\s*(.*)$/i))) {
+      // Several options on one line: "(a) Freezing (b) Condensation". The next marker must be the next letter in sequence AND
+      // written the same way as the first ("(b)" after "(a)", "B)" after "A)", "B." after "A."), so text like "and d. both" is not split.
+      const paren = !!m[1], punct = m[3].replace(/[.)]/, c => '\\' + c)
+      let letter = m[2].toLowerCase(), rest = m[4]
+      for (;;) {
+        const next = String.fromCharCode(letter.charCodeAt(0) + 1)
+        const re = paren ? new RegExp('\\s+\\(' + next + '\\)\\s*\\S', 'i') : new RegExp('\\s+' + next + punct + '\\s*\\S', 'i')
+        const cut = next <= 'd' ? rest.search(re) : -1
+        if (cut < 0) break
+        cur['option_' + letter] = rest.slice(0, cut).trim()
+        rest = rest.slice(cut).trim().replace(/^\(?[A-D]\s*[.):]\s*/i, '')
+        letter = next
+      }
+      field = 'option_' + letter; cur[field] = rest.trim(); continue
+    }
     if ((m = ln.match(/^(?:ans(?:wer)?|correct(?: answer)?)\s*[:-]\s*\(?([A-D])\b/i))) { cur.answer = m[1].toUpperCase(); field = null; continue }
     if ((m = ln.match(/^(?:exp(?:lanation)?)\s*[:-]\s*(.*)$/i))) { cur.explanation = m[1].trim(); field = 'explanation'; continue }
     if ((m = ln.match(/^topic\s*[:-]\s*(.*)$/i))) { cur.topic = m[1].trim(); field = 'topic'; continue }
@@ -52,4 +69,21 @@ export async function fetchAll(makeQuery, page = 1000) {
     all.push(...(data || []))
     if (!data || data.length < page) return { data: all, error: null }
   }
+}
+
+
+// Questions pasted as text + an optional separate answer key ("1-C 2-B 3-A"): the key fills in the missing "Ans:" lines by question number.
+export function parseWithKey(text, keyText = '') {
+  const t = String(text || ''), k = String(keyText || '').trim()
+  return parseQuestions(k ? applyAnswerKey(t.replace(/\s+$/, '') + '\nAnswer key: ' + k) : t)
+}
+
+// "Question 3: missing option B, option D, Ans" → "Q3: add option B, option D and the answer" (short and plain, for phones)
+export function friendlyErrors(errors = []) {
+  return errors.map(e => {
+    const m = String(e).match(/^Question (\d+): missing (.*)$/)
+    if (!m) return String(e)
+    const parts = m[2].split(', ').map(x => (x === 'Ans' ? 'the answer' : x))
+    return `Q${m[1]}: add ${parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]}`
+  })
 }
