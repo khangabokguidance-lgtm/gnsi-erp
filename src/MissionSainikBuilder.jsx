@@ -7,6 +7,7 @@ import { supabase } from './supabase'
 import { isAdminRole } from './roles'
 import { PremiumCard, PX } from './premiumUI'
 import MissionSainikQuickAdd from './MissionSainikQuickAdd'
+import MissionSainikEasyUpload from './MissionSainikEasyUpload'
 import MultiQuestionAdder, { blankCard, cardsToText, isEmptyCard, cardsProblems, PastePreview } from './MultiQuestionAdder'
 import { figFromFile } from './lib/figImage'
 import ScanFigure from './ScanFigure'
@@ -627,6 +628,15 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 .msb .msb-strip::-webkit-scrollbar{display:none}.msb .msb-chip{scroll-snap-align:center;flex:0 0 auto;min-width:92px;text-align:left;padding:9px 12px;border-radius:14px;border:2px solid #e8e3d8;background:#fff;cursor:pointer;font-family:inherit}
 .msb .msb-chip.on{border-color:#b8923a;background:#faf1d9}.msb .msb-fab{position:fixed;right:14px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:34;border:none;border-radius:16px;background:#b8923a;color:#fff;font:800 14px inherit;font-family:inherit;padding:14px 18px;box-shadow:0 10px 24px rgba(184,146,58,.5)}
 @media (max-width:640px){.msb input:not([type=checkbox]):not([type=file]),.msb select,.msb textarea{font-size:16px!important}.msb .px-hbtn,.msb .px-btn{min-height:42px}.msb .px-card{border-radius:16px}}`
+  // Easy upload: a staff member sees only their own sections (unfinished first); an admin sees the sections of the test they are on.
+  const easySections = (() => {
+    const own = l => (byVersion ? l.filter(x => x.uploaded_by === (currentUser?.name || '')) : l).length
+    const row = (t, x) => ({ t, label: x.label, short: x.short, need: x.q, have: Math.min(own(get(t, x.label)), 999) })
+    if (isAdmin) return live(testNo).map(x => row(testNo, x))
+    const mine = cfg.tests.flatMap(t => live(t.no).filter(x => mineAt(t.no, x)).map(x => row(t.no, x)))
+    return [...mine.filter(r => r.have < r.need), ...mine.filter(r => r.have >= r.need)].slice(0, 40)
+  })()
+  const easyWhy = isLocked(testNo) ? 'This paper is locked by an admin.' : 'Only this section’s setter (or an admin) can upload here. Tap one of your own sections above.'
   const nextMine = (() => { for (const t of cfg.tests) for (const s of live(t.no)) if (mineAt(t.no, s) && get(t.no, s.label).length < s.q) return { t: t.no, s }; return null })()
   return (
     <div className="msb">
@@ -667,6 +677,9 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </table>}
       </PremiumCard>
 
+      <MissionSainikEasyUpload sections={easySections} testNo={testNo} section={section} tid={tid} text={text} setText={setText} mayEdit={mayEdit} why={easyWhy} busy={busy}
+        onPick={(t, label) => { setTestNo(t); setSection(label) }} onFile={loadFile} onUpload={list => insertQuestions(list, { clear: true })} />
+
       <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isAdmin && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button>{isAdmin && <button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button>}</span>}>
         {isMobile && (
@@ -692,8 +705,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </div>
       </PremiumCard>
 
-      {isMobile && !showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· health check, print, Word, OMR</span></span><span>▸</span></button>}
-      {(!isMobile || showTools) && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
+      {(isMobile || !isAdmin) && !showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· health check, print, Word, OMR</span></span><span>▸</span></button>}
+      {((!isMobile && isAdmin) || showTools) && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
         right={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>{isAdmin && onLock && <button className="px-hbtn" onClick={() => onLock(`lock:${series}:${testNo}`, !isLocked(testNo))}>{isLocked(testNo) ? '🔓 Unlock paper' : '🔒 Lock paper'}</button>}<span className="px-hbtn" style={{ pointerEvents: 'none' }}>{health.score}% healthy</span></span>}>
         {isLocked(testNo) && <div role="status" style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0', color: '#5c4510', fontSize: 13, fontWeight: 600 }}>🔒 This paper is locked by an admin. It can be viewed and printed but not changed{isAdmin ? ' (you can, as an admin)' : ''}.</div>}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16 }}>
@@ -1016,7 +1029,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           canEdit={mayEdit && !embargoed(testNo, section)} hasPictureCols={secList.some(x => 'passage' in x || 'image_data' in x)} isMobile={isMobile} onSave={saveQuestionPatch} onDelete={del} onClose={() => setStudio(null)} setMsg={setMsg} />
       )}
       {scanEdit && editQ && <ScanFigure onDone={u => { setEditQ(q => ({ ...q, image_data: u })); setScanEdit(false) }} onClose={() => setScanEdit(false)} />}
-      {isMobile && mayEdit && !editorInView && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump('msb-editor')}>＋ Add questions</button>}
+      {isMobile && mayEdit && !editorInView && !embargoed(testNo, section) && <button type="button" className="msb-fab" onClick={() => jump(easySections.length ? 'msb-easy' : 'msb-editor')}>{easySections.length ? '⚡ Easy upload' : '＋ Add questions'}</button>}
     </div>
   )
 }

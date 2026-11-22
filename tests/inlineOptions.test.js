@@ -35,3 +35,14 @@ test('B) and B. style inline options still split', () => {
   const b = parseQuestions('1. Q\nA. one B. two\nC. three D. four\nAns: B').questions[0]
   assert.deepEqual([b.option_a, b.option_b, b.option_c, b.option_d], ['one', 'two', 'three', 'four'])
 })
+
+import { parseWithKey, friendlyErrors } from '../src/lib/missionSainikQuestions.js'
+test('parseWithKey applies a separate answer key by question number', () => {
+  const body = '1. A?\n(a) x (b) y\n(c) z (d) w\n2. B?\nA) 1\nB) 2\nC) 3\nD) 4'
+  const r = parseWithKey(body, '1-C 2-B')
+  assert.deepEqual(r.errors, []); assert.deepEqual(r.questions.map(q => q.answer), ['C', 'B'])
+  assert.equal(parseWithKey(body, '').errors.length, 2)   // without a key the answers are missing
+})
+test('friendlyErrors turns parser messages into short plain sentences', () => {
+  assert.deepEqual(friendlyErrors(['Question 3: missing option B, option D, Ans', 'Question 4: missing Ans']), ['Q3: add option B, option D and the answer', 'Q4: add the answer'])
+})

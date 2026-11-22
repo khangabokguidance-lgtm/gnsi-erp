@@ -1,5 +1,7 @@
 // Pure helpers for the Mission Sainik question builders (kept out of the component so they can be unit-tested).
 
+import { applyAnswerKey } from './questionPaste.js'
+
 // Free-text format, one question after another:
 //   Q1. question text
 //   A) option   B) option   C) option   D) option   (each on its own line)
@@ -67,4 +69,21 @@ export async function fetchAll(makeQuery, page = 1000) {
     all.push(...(data || []))
     if (!data || data.length < page) return { data: all, error: null }
   }
+}
+
+
+// Questions pasted as text + an optional separate answer key ("1-C 2-B 3-A"): the key fills in the missing "Ans:" lines by question number.
+export function parseWithKey(text, keyText = '') {
+  const t = String(text || ''), k = String(keyText || '').trim()
+  return parseQuestions(k ? applyAnswerKey(t.replace(/\s+$/, '') + '\nAnswer key: ' + k) : t)
+}
+
+// "Question 3: missing option B, option D, Ans" → "Q3: add option B, option D and the answer" (short and plain, for phones)
+export function friendlyErrors(errors = []) {
+  return errors.map(e => {
+    const m = String(e).match(/^Question (\d+): missing (.*)$/)
+    if (!m) return String(e)
+    const parts = m[2].split(', ').map(x => (x === 'Ans' ? 'the answer' : x))
+    return `Q${m[1]}: add ${parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]}`
+  })
 }
