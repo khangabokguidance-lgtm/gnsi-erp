@@ -581,6 +581,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const chapterCount = ch => secList.filter(q => normT(q.topic) === normT(ch)).length
   const untagged = chapters.length ? secList.filter(q => !chapters.some(ch => normT(ch) === normT(q.topic))).length : 0
   const flav = flavours(secList, sec.q)
+  const secHue = SUBJ_HUE[sec.key] || Object.values(SUBJ_HUE)[Math.max(0, cfg.sections.indexOf(sec)) % 6]
   const myCount = byVersion ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
   const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
   const limN = lim.k === `${testNo}|${section}|${qSearch}|${qLevel}` ? lim.n : 10
@@ -590,7 +591,27 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 
   const jump = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const stepTest = d => { const i = cfg.tests.findIndex(t => t.no === testNo); const n = cfg.tests[i + d]; if (n) setTestNo(n.no) }
-  const msbCss = `${MATH_CSS}.msb-wrap{background:#fff;border:1px solid #e3e8f1;border-radius:20px;box-shadow:0 1px 2px rgba(19,42,79,.06),0 18px 40px -24px rgba(19,42,79,.4);overflow:hidden;margin-bottom:18px}
+  const msbCss = `${MATH_CSS}.msb-prog{margin:0 0 16px;padding:16px 18px;border-radius:16px;border:1px solid color-mix(in srgb,var(--c) 28%,#fff);background:linear-gradient(135deg,color-mix(in srgb,var(--c) 9%,#fff),#fff 70%)}
+.msb-prog .hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}.msb-prog .ttl{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--c)}
+.msb-prog .cnt{white-space:nowrap;font-size:14px;color:#5d6b82;font-weight:700}.msb-prog .cnt b{font-family:'Fraunces',Georgia,serif;font-size:28px;color:var(--c);margin-right:2px}
+.msb-prog .dots{display:flex;flex-wrap:wrap;gap:5px}.msb-prog .dots i{width:14px;height:14px;border-radius:50%;background:#e3e8f1;transition:background .3s,transform .3s}
+.msb-prog .dots i.on{background:var(--c);box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 25%,transparent)}.msb-prog .dots i.next{background:#fff;box-shadow:inset 0 0 0 2px var(--c);animation:msb-pulse 1.6s ease-in-out infinite}
+@keyframes msb-pulse{50%{transform:scale(1.25)}}
+.msb-prog .msg{display:flex;align-items:center;gap:7px;margin-top:11px;font-size:14px;font-weight:600;color:#26354f;line-height:1.45}.msb-prog .msg svg{color:#0f7a4c;flex:none}
+.msb-meth{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 10px}
+.msb-meth button{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:3px;padding:14px;border-radius:14px;border:1.5px solid #dfe5ef;background:#fff;transition:transform .18s,box-shadow .18s,border-color .18s}
+.msb-meth button:hover{transform:translateY(-2px);border-color:#9fb4d6;box-shadow:0 12px 22px -16px rgba(19,42,79,.5)}.msb-meth button:focus-visible{outline:3px solid #f2c94c;outline-offset:2px}
+.msb-meth button.on{border-color:#132a4f;background:linear-gradient(180deg,#eef3fc,#fff);box-shadow:0 0 0 3px rgba(19,42,79,.12)}
+.msb-meth .ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:#e6edf9;color:#132a4f;margin-bottom:4px}.msb-meth button.on .ic{background:#132a4f;color:#fff}
+.msb-meth b{font-size:15px;color:#0e2a55}.msb-meth small{font-size:12.5px;color:#5d6b82;line-height:1.35}
+.msb-meth em{position:absolute;top:10px;right:10px;font-style:normal;font-size:10px;font-weight:800;letter-spacing:.04em;padding:2px 8px;border-radius:99px;background:#fff3d6;color:#8a5500}
+.msb-how{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 14px;padding:10px 14px;border-radius:12px;background:#f6f8fc;border:1px dashed #cdd6e6;font-size:13px;color:#26354f;font-weight:600}
+.msb-how span{display:inline-flex;align-items:center;gap:8px}.msb-how i{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#132a4f;color:#fff;font:800 12px/1 inherit;font-style:normal}
+.msb-more{margin-top:16px;border:1px solid #e3e8f1;border-radius:14px;background:#fbfcfe}.msb-more>summary{cursor:pointer;padding:13px 16px;font-weight:800;font-size:14px;color:#0e2a55;list-style:none}.msb-more>summary::-webkit-details-marker{display:none}
+.msb-more>summary::before{content:'▸';display:inline-block;margin-right:9px;transition:transform .2s;color:#8a6a1f}.msb-more[open]>summary::before{transform:rotate(90deg)}.msb-more>summary small{font-weight:500;color:#5d6b82}
+.msb-more .in{padding:0 16px 14px}
+@media (max-width:700px){.msb-meth{gap:8px}.msb-meth button{padding:12px 6px;align-items:center;text-align:center}.msb-meth small,.msb-meth em{display:none}.msb-meth b{font-size:13.5px}.msb-prog{padding:13px 14px}.msb-prog .dots i{width:12px;height:12px}}
+.msb-wrap{background:#fff;border:1px solid #e3e8f1;border-radius:20px;box-shadow:0 1px 2px rgba(19,42,79,.06),0 18px 40px -24px rgba(19,42,79,.4);overflow:hidden;margin-bottom:18px}
 .msb-hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center;padding:20px 28px 22px;color:#fff;background:radial-gradient(70% 140% at 100% 0%,rgba(230,195,94,.24),transparent 60%),linear-gradient(135deg,#081a38,#14336a 70%,#1b4388);isolation:isolate;overflow:hidden}
 .msb-hero::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.09) 1px,transparent 1px);background-size:16px 16px;-webkit-mask-image:linear-gradient(90deg,transparent,#000);mask-image:linear-gradient(90deg,transparent,#000);z-index:-1}
 .msb-hero::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,#8a6a1f,#e6c35e 50%,#8a6a1f)}
@@ -826,11 +847,73 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </div>
       </PremiumCard>}
 
-      <div id="msb-editor" style={{ scrollMarginTop: 70 }}>
+      <div id="msb-editor" style={{ scrollMarginTop: 140 }}>
       <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${byVersion && flav.length > 1 ? `${flav.length} teachers · yours ${myCount}/${sec.q}` : `${secList.length}/${sec.q} questions`} · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
         right={<span style={{ display: 'flex', gap: 8 }}>{(byVersion ? flavourStatus(secList, sec.q) === 'ok' : secList.length >= sec.q) && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
         {mayEdit ? (
           <>
+            <div className="msb-prog" style={{ '--c': secHue }}>
+              <div className="hd"><span className="ttl">Your progress in {sec.short || section}</span><span className="cnt"><b>{Math.min(myCount, sec.q)}</b> of {sec.q}</span></div>
+              {sec.q <= 60 ? <div className="dots" role="img" aria-label={`${Math.min(myCount, sec.q)} of ${sec.q} questions added`}>{Array.from({ length: sec.q }, (_, i) => <i key={i} className={i < myCount ? 'on' : i === myCount ? 'next' : ''} />)}</div>
+                : <MiniBar pct={(myCount / sec.q) * 100} width={'100%'} />}
+              <div className="msg">{signoff(testNo, section) ? <><Icon name="check" size={15} stroke={2.6} />Verified — this section is locked in. Well done.</>
+                : myCount >= sec.q ? <><Icon name="check" size={15} stroke={2.6} />Section complete — it is ready for verification.</>
+                  : myCount === 0 ? <>Let's begin. Choose how you want to add questions below — your first one takes about a minute.</>
+                    : myCount < sec.q / 2 ? <>Good start. {sec.q - myCount} more to go — every question is saved the moment you add it.</>
+                      : <>Over halfway. Just {sec.q - myCount} more.</>}</div>
+            </div>
+            {chapters.length > 0 && (
+              <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
+                <datalist id="msb-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
+                <b style={{ fontSize: 13, color: PX.navy }}>📘 Syllabus plan · {tid(testNo)} · {section}</b>
+                <div style={{ fontSize: 12.5, color: PX.sub, margin: '2px 0 8px' }}>Set the questions on {chapters.length === 1 ? 'this chapter' : 'these chapters'}. {chapters.length > 1 ? 'Tap a chapter to tag the next upload with it. ' : 'New questions are tagged with it automatically. '}The number shows how many questions you already have on each.</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {chapters.map(ch => { const on = chapterPick === ch || chapters.length === 1; return (
+                    <button key={ch} type="button" aria-pressed={on} onClick={() => setChapterPick(chapterPick === ch ? '' : ch)} style={{ padding: '5px 12px', borderRadius: 99, border: `1.5px solid ${on ? '#7c3aed' : '#d9ccf5'}`, background: on ? '#ede4ff' : '#fff', color: '#4c1d95', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{ch} · {chapterCount(ch)}</button>) })}
+                </div>
+                {untagged > 0 && <div style={{ fontSize: 12, color: PX.warn, marginTop: 6 }}>{untagged} question{untagged === 1 ? '' : 's'} not tagged with a planned chapter.</div>}
+              </div>)}
+            <div className="msb-meth" data-ti-skip role="tablist" aria-label="How to add questions">
+              {[['one', 'marks', 'One by one', 'Type a question, tap the answer. Saved instantly.', isMobile ? 'Best on a phone' : 'Easy to start'], ['cards', 'practice', 'Many at once', 'Fill several question cards, then upload together.', isMobile ? '' : 'Fastest on a computer'], ['paste', 'material', 'Paste or file', 'Bring questions from Word, a .txt or a .csv file.', 'Already typed?']].map(([k, ic, t, d, tag]) => (
+                <button key={k} type="button" role="tab" aria-selected={addMode === k} className={addMode === k ? 'on' : ''} onClick={() => setAddMode(k)}>
+                  <span className="ic"><Icon name={ic} size={20} /></span><b>{t}</b><small>{d}</small>{tag ? <em>{tag}</em> : null}
+                </button>))}
+            </div>
+            {addMode !== 'one' && <div className="msb-how" aria-label="How it works">
+              {(addMode === 'cards' ? ['Fill one card per question', 'Mark the answer (Alt + A to D)', 'Upload all cards together'] : ['Paste text or load a file', 'Check the preview it builds', 'Upload when it looks right']).map((t, i) => <span key={t}><i>{i + 1}</i>{t}</span>)}
+            </div>}
+            {addMode === 'one' ? (
+              <MissionSainikQuickAdd chapters={chaptersOf(testNo, section)} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
+            ) : addMode === 'cards' ? (
+              <>
+                <MultiQuestionAdder noExplanation chapters={chaptersOf(testNo, section)} key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, position: 'sticky', bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom))' : 0, zIndex: 4, background: '#fff', padding: '10px 0', borderTop: `1px solid ${line}` }}>
+                  <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>{parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`}</span>
+                  <button className="px-btn ghost" onClick={() => setCards([blankCard()])} disabled={cards.length === 1 && !cards[0].question}>Clear all</button>
+                  <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : `⬆ Upload ${parsed.questions.length || ''} question${parsed.questions.length === 1 ? '' : 's'}`}</button>
+                </div>
+              </>
+            ) : (
+              <>
+            <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 8 }}>
+              Paste your questions in this format (or load a .txt / .csv file). For a reading passage, put a “Passage: …” line before its questions and “End passage” after them; attach figures with ✎ on a question:
+              <pre style={{ background: PX.tint, padding: 8, borderRadius: 8, fontSize: 12, margin: '6px 0', whiteSpace: 'pre-wrap' }}>{`Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B\nExp: Same denominator, add numerators.\nTopic: Fractions\nLevel: Easy`}</pre>
+            </div>
+            <textarea className="px-input" rows={9} value={text} onChange={e => setText(e.target.value)} aria-label="Paste questions here" placeholder="Paste questions here…" style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+              <button className="px-hbtn" onClick={downloadTemplate} type="button">⬇ CSV template</button>
+              <input type="file" aria-label="Load questions from a .txt or .csv file" accept=".txt,.csv,text/plain,text/csv" onChange={loadFile} style={{ fontSize: 12 }} />
+              <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>
+                {text.trim() ? (parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : parsed.questions.length ? `${parsed.questions.length} question(s) ready to upload` : '⚠ ' + detectQuestions(text).text) : ''}
+              </span>
+              <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : '⬆ Upload questions'}</button>
+            </div>
+            <PastePreview questions={parsed.questions} errors={parsed.errors} startNo={startOf(section) + get(testNo, section).length} title={`Section: ${sec.title || section}`} />
+              </>
+            )}
+            <details className="msb-more" open={byVersion || secList.length > sec.q || multiTeachers}>
+              <summary>More about this section <small>· teachers, versions, backup &amp; restore</small></summary>
+              <div className="in">
             {byVersion && flav.length > 0 && (
               <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f3f8ff', border: '1px solid #c9dcf7' }}>
                 <b style={{ fontSize: 13, color: PX.navy }}>{flav.length > 1 ? `${flav.length} teachers each set their own ${sec.q} questions` : 'Each teacher sets their own set'}</b>
@@ -865,17 +948,6 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                 <input type="checkbox" checked={byVersion} disabled={!isAdmin || !onSetting} onChange={e => onSetting?.('pre_versions', e.target.checked)} />
                 <span style={{ flex: '1 1 260px' }}><b style={{ fontSize: 13, color: PX.navy }}>Multiple sets on the same syllabus</b><span style={{ display: 'block', fontSize: 12.5, color: PX.sub }}>{byVersion ? 'Each teacher writes their own full set of questions for the same chapter. The paper prints as Version A, B, C so students get different versions.' : (isAdmin ? 'Off: teachers share one set (the admin picks the best questions). Turn on to let each teacher write a full set.' : 'Off: teachers share one set.')}</span></span>
               </label>)}
-            {chapters.length > 0 && (
-              <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
-                <datalist id="msb-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
-                <b style={{ fontSize: 13, color: PX.navy }}>📘 Syllabus plan · {tid(testNo)} · {section}</b>
-                <div style={{ fontSize: 12.5, color: PX.sub, margin: '2px 0 8px' }}>Set the questions on {chapters.length === 1 ? 'this chapter' : 'these chapters'}. {chapters.length > 1 ? 'Tap a chapter to tag the next upload with it. ' : 'New questions are tagged with it automatically. '}The number shows how many questions you already have on each.</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {chapters.map(ch => { const on = chapterPick === ch || chapters.length === 1; return (
-                    <button key={ch} type="button" aria-pressed={on} onClick={() => setChapterPick(chapterPick === ch ? '' : ch)} style={{ padding: '5px 12px', borderRadius: 99, border: `1.5px solid ${on ? '#7c3aed' : '#d9ccf5'}`, background: on ? '#ede4ff' : '#fff', color: '#4c1d95', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{ch} · {chapterCount(ch)}</button>) })}
-                </div>
-                {untagged > 0 && <div style={{ fontSize: 12, color: PX.warn, marginTop: 6 }}>{untagged} question{untagged === 1 ? '' : 's'} not tagged with a planned chapter.</div>}
-              </div>)}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px', padding: '8px 10px', borderRadius: 12, background: '#faf8f3', border: `1px solid ${line}` }}>
               <b style={{ fontSize: 12.5 }}>📦 Question bank</b>
               <button type="button" className="px-hbtn" onClick={() => exportBank('section')}>⬇ This section</button>
@@ -884,40 +956,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               <label className="px-hbtn" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>⬆ Import JSON<input type="file" accept=".json,application/json" aria-label="Import a question bank file" onChange={importBank} style={{ display: 'none' }} /></label>
               <span style={{ fontSize: 11.5, color: PX.sub }}>{isAdmin ? 'Back up, move to another series, or share with another institute. Duplicates are skipped.' : 'You can export or import your own section. Duplicates are skipped.'}</span>
             </div>
-            <div data-ti-skip role="tablist" aria-label="How to add questions" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2, marginBottom: 12 }}>
-              {[['one', '☝️ One by one'], ['cards', '🗂️ Many at once'], ['paste', '📋 Paste / file']].map(([k, l]) => (
-                <button key={k} type="button" role="tab" aria-selected={addMode === k} onClick={() => setAddMode(k)} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: addMode === k ? '#fff' : 'transparent', boxShadow: addMode === k ? '0 1px 4px rgba(15,27,46,.15)' : 'none', color: addMode === k ? PX.ink : PX.sub, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
-              ))}
-            </div>
-            {addMode === 'one' ? (
-              <MissionSainikQuickAdd chapters={chaptersOf(testNo, section)} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
-            ) : addMode === 'cards' ? (
-              <>
-                <MultiQuestionAdder noExplanation chapters={chaptersOf(testNo, section)} key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, position: 'sticky', bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom))' : 0, zIndex: 4, background: '#fff', padding: '10px 0', borderTop: `1px solid ${line}` }}>
-                  <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>{parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`}</span>
-                  <button className="px-btn ghost" onClick={() => setCards([blankCard()])} disabled={cards.length === 1 && !cards[0].question}>Clear all</button>
-                  <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : `⬆ Upload ${parsed.questions.length || ''} question${parsed.questions.length === 1 ? '' : 's'}`}</button>
-                </div>
-              </>
-            ) : (
-              <>
-            <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 8 }}>
-              Paste your questions in this format (or load a .txt / .csv file). For a reading passage, put a “Passage: …” line before its questions and “End passage” after them; attach figures with ✎ on a question:
-              <pre style={{ background: PX.tint, padding: 8, borderRadius: 8, fontSize: 12, margin: '6px 0', whiteSpace: 'pre-wrap' }}>{`Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B\nExp: Same denominator, add numerators.\nTopic: Fractions\nLevel: Easy`}</pre>
-            </div>
-            <textarea className="px-input" rows={9} value={text} onChange={e => setText(e.target.value)} aria-label="Paste questions here" placeholder="Paste questions here…" style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} />
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-              <button className="px-hbtn" onClick={downloadTemplate} type="button">⬇ CSV template</button>
-              <input type="file" aria-label="Load questions from a .txt or .csv file" accept=".txt,.csv,text/plain,text/csv" onChange={loadFile} style={{ fontSize: 12 }} />
-              <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>
-                {text.trim() ? (parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : parsed.questions.length ? `${parsed.questions.length} question(s) ready to upload` : '⚠ ' + detectQuestions(text).text) : ''}
-              </span>
-              <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : '⬆ Upload questions'}</button>
-            </div>
-            <PastePreview questions={parsed.questions} errors={parsed.errors} startNo={startOf(section) + get(testNo, section).length} title={`Section: ${sec.title || section}`} />
-              </>
-            )}
+              </div>
+            </details>
           </>
         ) : (
           <div style={{ padding: '8px 12px', borderRadius: 10, background: PX.tint, fontSize: 13, color: PX.sub }}>
