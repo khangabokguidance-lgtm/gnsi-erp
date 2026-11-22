@@ -13,6 +13,9 @@ import ScanFigure from './ScanFigure'
 import QuestionEditor from './QuestionEditor'
 import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
+import { Icon } from './MissionSainikIcons'
+import { settersOfRow } from './lib/missionSainikAllot'
+import { routePreMock, matchChapter } from './lib/missionSainikPlanRule'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
@@ -27,6 +30,7 @@ const fmtShort = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', 
 // Which panel subjects may upload each Mega Mock section.
 const MEGA_PANEL = { Mathematics: ['maths'], Intelligence: ['reasoning'], 'Grammar + Vocabulary': ['grammar', 'vocab'], 'Science + GK': ['science', 'gk'] }
 
+const SUBJ_HUE = { maths: '#1d4f91', reasoning: '#6d28d9', science: '#0f7a4c', gk: '#c2410c', grammar: '#be185d', vocab: '#0e7490' }
 const SUBJ = Object.fromEntries(SUBJECTS.map(x => [x.key, x]))
 const DAILY_SECTIONS = [['maths', 20, 3], ['reasoning', 10, 2], ['grammar', 10, 2], ['gk', 10, 2]]
   .map(([k, q, marks]) => ({ label: SUBJ[k].label, short: SUBJ[k].short, q, marks, key: k }))
@@ -64,7 +68,10 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const isMe = n => nameMatches(currentUser?.matchName || currentUser?.name, n)
   const [qs, setQs] = useState([])
   const [setup, setSetup] = useState(false)
-  const [testNo, setTestNo] = useState(startTest || 1)
+  const [testNo, setTestNo] = useState(() => startTest || (cfg.tests.find(t => t.date && today && t.date >= today)?.no ?? (today && cfg.tests.some(t => t.date) ? cfg.tests[cfg.tests.length - 1].no : 1)))   // opens on the present test: the next one not yet held
+  const [showAll, setShowAll] = useState(false)
+  const [showNotes, setShowNotes] = useState(false)   // review notes stay folded unless there are open notes
+  const [lim, setLim] = useState({ k: '', n: 10 })   // questions listed before "Show more"   // false: only the present test is listed; true: every test
   const [sectionSel, setSection] = useState(startSection || cfg.sections[0].label)
   const [text, setText] = useState('')
   // The pasted text is kept on this device per test and section, so a reload (pull-down on a phone, a dropped connection) loses nothing
@@ -136,6 +143,15 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const get = (t, s) => bySec[t + '|' + s] || []
   // The syllabus plan (Mission Sainik → Syllabus): the chapter(s) planned for this test and section. Pre Mock and Daily tests follow it.
   const chaptersOf = (t, label) => ((series === 'pre' || series === 'daily') && syllabus ? String(syllabus[t + '|' + label] || '').split(';').map(x => x.trim()).filter(Boolean) : [])
+  // Pre Mock follows the Syllabus Plan for each test only, and holds exactly the section's 25 questions; extras go to the Practice bank.
+  const strictPlan = series === 'pre'
+  const practiceSetFor = label => {   // the uploading teacher's own practice set of this subject (Set 1 when none is allotted to them)
+    const key = cfg.sections.find(x => x.label === label)?.key, max = PRACTICE_PANEL[key]?.sets || 1
+    const same = (tasks || []).filter(r => r.kind === 'practice' && r.subject === label).sort((a, b) => a.id - b.id)
+    const mine = same.find(r => settersOfRow(r).some(isMe))
+    if (!mine) return 1
+    return mine.test_no > 0 ? Math.min(mine.test_no, max) : Math.min(Math.max(same.indexOf(mine) + 1, 1), max)
+  }
   const [chapterPick, setChapterPick] = useState('')
   const avail = (t, s) => !s.sets || t <= s.sets                       // practice: not every subject has a 3rd set
   const live = t => cfg.sections.filter(s => avail(t, s))
@@ -209,16 +225,25 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     const seen = new Set(ownOf(get(testNo, section)).map(q => norm(q.question)))
     const dupes = list.filter((q, i) => seen.has(norm(q.question)) || list.findIndex(z => norm(z.question) === norm(q.question)) !== i)
     if (dupes.length) { setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”.${list.length > 1 ? ' Remove them and upload again.' : ''}`); return false }
-    if (have + list.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + list.length}. Upload anyway?`)) return false
-    setBusy(true)
     const chs = chaptersOf(testNo, section), defTopic = chs.includes(chapterPick) ? chapterPick : chs.length === 1 ? chs[0] : ''   // a question without a topic gets the planned chapter
-    const rows = list.map(q => ({ ...q, topic: q.topic || defTopic || q.topic, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
-    const { error } = await supabase.from(TABLE).insert(rows)
+    let paperList = list.map(q => ({ ...q, topic: q.topic || defTopic || q.topic })), extra = []
+    if (strictPlan) {
+      const r = routePreMock({ list, chapters: chs, defTopic, room: sec.q - have })
+      if (r.error) { setMsg(`❌ ${tid(testNo)} · ${section} follows the Syllabus Plan: ${r.planned.join(' / ')}. ${r.bad[0].topic ? `“${r.bad[0].topic}” is not planned for this test.` : 'Choose the chapter first.'}${r.bad.length > 1 ? ` (${r.bad.length} questions)` : ''}`); return false }
+      paperList = r.paper; extra = r.extra
+      if (extra.length && list.length > 1 && !window.confirm(`${tid(testNo)} · ${section} has room for ${paperList.length} more (limit ${sec.q}).\n\nThe other ${extra.length} will be saved to the Practice bank (${section} · Set ${practiceSetFor(section)}), tagged with their chapter.\n\nContinue?`)) return false
+    } else if (have + list.length > sec.q && !window.confirm(`${section} needs ${sec.q} questions; this makes ${have + list.length}. Upload anyway?`)) return false
+    setBusy(true)
+    const practiceNo = practiceSetFor(section)
+    const rows = paperList.map(q => ({ ...q, series, test_no: testNo, section, uploaded_by: currentUser?.name || '' }))
+    const xrows = extra.map(q => ({ ...q, series: 'practice', test_no: practiceNo, section, uploaded_by: currentUser?.name || '' }))
+    const { error } = await supabase.from(TABLE).insert([...rows, ...xrows])
     setBusy(false)
     if (error) { setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : '')); return false }
     if (clear) { setText(''); setCards([blankCard()]) }
-    setMsg(`✅ ${rows.length === 1 ? 'Question' : rows.length + ' questions'} added to ${tid(testNo)} · ${section} · ${Math.min(have + rows.length, sec.q)} of ${sec.q}`)
-    audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length })
+    const xTxt = xrows.length ? `${xrows.length === 1 ? '1 question' : xrows.length + ' questions'} saved to the Practice bank (${section} · Set ${practiceNo}${xrows[0].topic ? ' · ' + xrows[0].topic : ''})` : ''
+    setMsg(rows.length ? `✅ ${rows.length === 1 ? 'Question' : rows.length + ' questions'} added to ${tid(testNo)} · ${section} · ${Math.min(have + rows.length, sec.q)} of ${sec.q}${xTxt ? ' — ' + xTxt : ''}` : `✅ ${tid(testNo)} · ${section} is full (${sec.q}). ${xTxt}`)
+    audit('upload_questions', `${series}:${testNo}:${section}`, { count: rows.length, ...(xrows.length ? { to_practice: xrows.length, practice_set: practiceNo } : {}) })
     await clearSignoff(testNo, section)
     await load()
     // Pre Mock: when the section is complete, mark the allotted task as submitted automatically.
@@ -264,7 +289,9 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     if (!['A', 'B', 'C', 'D'].includes(d.answer)) return setMsg('❌ Choose the correct answer.')
     const norm = x => x.toLowerCase().replace(/\s+/g, ' ').trim()
     if (get(d.test_no, d.section).some(q => q.id !== d.id && norm(q.question) === norm(d.question))) return setMsg('❌ Another question in this section has the same text.')
-    const patch = { question: d.question.trim(), option_a: d.option_a.trim(), option_b: d.option_b.trim(), option_c: d.option_c.trim(), option_d: d.option_d.trim(), answer: d.answer, explanation: d.explanation?.trim() || null, topic: d.topic?.trim() || null, difficulty: d.difficulty || null }
+    const planned = strictPlan ? chaptersOf(d.test_no, d.section) : []
+    if (planned.length && d.topic?.trim() && !matchChapter(planned, d.topic)) return setMsg(`❌ “${d.topic.trim()}” is not planned for this test. Use: ${planned.join(' / ')}`)
+    const patch = { question: d.question.trim(), option_a: d.option_a.trim(), option_b: d.option_b.trim(), option_c: d.option_c.trim(), option_d: d.option_d.trim(), answer: d.answer, explanation: d.explanation?.trim() || null, topic: (planned.length && matchChapter(planned, d.topic)) || d.topic?.trim() || null, difficulty: d.difficulty || null }
     if ('passage' in d) patch.passage = d.passage?.trim() || null
     if ('image_data' in d) patch.image_data = d.image_data || null
     const { error } = await supabase.from(TABLE).update(patch).eq('id', d.id)
@@ -275,6 +302,9 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   // Save one question from the full-screen editor (same rules as the old inline form).
   const saveQuestionPatch = async (q, patch) => {
     if (!canEdit(q.test_no, q.section)) { setMsg('❌ Only the section setter or an admin can edit this question.'); return false }
+    const planned = strictPlan && 'topic' in patch ? chaptersOf(q.test_no, q.section) : []
+    if (planned.length && patch.topic && !matchChapter(planned, patch.topic)) { setMsg(`❌ “${patch.topic}” is not planned for this test. Use: ${planned.join(' / ')}`); return false }
+    if (planned.length && patch.topic) patch = { ...patch, topic: matchChapter(planned, patch.topic) }
     const { error } = await supabase.from(TABLE).update(patch).eq('id', q.id)
     if (error) { setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages and figures)' : '')); return false }
     audit('edit_question', `${series}:${q.test_no}:${q.section}`, { id: q.id })
@@ -564,7 +594,6 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     return () => io.disconnect()
   }, [isMobile, testNo, section, addMode])
   const secStatus = (t, s) => { if (byVersion) return flavourStatus(get(t, s.label), s.q); const n = get(t, s.label).length; return n >= s.q ? 'ok' : n ? 'part' : 'none' }
-  const col = st => (st === 'ok' ? PX.ok : st === 'part' ? PX.warn : PX.faint || '#9aa5b8')
   const sec = cfg.sections.find(s => s.label === section)
   const secList = get(testNo, sec.label)
   const mayEdit = canEdit(testNo, sec.label)
@@ -577,15 +606,77 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const chapterCount = ch => secList.filter(q => normT(q.topic) === normT(ch)).length
   const untagged = chapters.length ? secList.filter(q => !chapters.some(ch => normT(ch) === normT(q.topic))).length : 0
   const flav = flavours(secList, sec.q)
+  const secHue = SUBJ_HUE[sec.key] || Object.values(SUBJ_HUE)[Math.max(0, cfg.sections.indexOf(sec)) % 6]
   const myCount = byVersion ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
+  const overview = byVersion && myCount === 0 && secList.length > 0 && !settersOf(testNo, section).some(isMe)   // an admin / verifier looking at other teachers' sets, not a setter with a set of their own
   const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
+  const limN = lim.k === `${testNo}|${section}|${qSearch}|${qLevel}` ? lim.n : 10
   const ready = testReady(testNo)
   const health = paperHealth(live(testNo).map(x => ({ label: x.label, q: x.q, items: get(testNo, x.label) })), qs, testNo)
   const lvl = { Easy: 0, Medium: 0, Hard: 0 }; secList.forEach(q => { if (lvl[q.difficulty] != null) lvl[q.difficulty]++ })
 
   const jump = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const stepTest = d => { const i = cfg.tests.findIndex(t => t.no === testNo); const n = cfg.tests[i + d]; if (n) setTestNo(n.no) }
-  const msbCss = `${MATH_CSS}.msb img.oi{max-height:70px}.msb .msb-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+  const msbCss = `${MATH_CSS}.msb-prog .chipsrow{display:flex;flex-wrap:wrap;gap:7px}.msb-prog .chipsrow span{display:inline-flex;align-items:center;gap:7px;padding:4px 12px 4px 5px;border-radius:99px;background:#fff;border:1px solid #f1c9c4;font-size:12.5px;font-weight:700;color:#8a3a2f}
+.msb-prog .chipsrow span.ok{border-color:#bfe3cc;color:#0f7a4c}.msb-prog .chipsrow i{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--c);color:#fff;font:800 11px/1 inherit;font-style:normal}
+.msb-prog{margin:0 0 16px;padding:16px 18px;border-radius:16px;border:1px solid color-mix(in srgb,var(--c) 28%,#fff);background:linear-gradient(135deg,color-mix(in srgb,var(--c) 9%,#fff),#fff 70%)}
+.msb-prog .hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}.msb-prog .ttl{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--c)}
+.msb-prog .cnt{white-space:nowrap;font-size:14px;color:#5d6b82;font-weight:700}.msb-prog .cnt b{font-family:'Fraunces',Georgia,serif;font-size:28px;color:var(--c);margin-right:2px}
+.msb-prog .dots{display:flex;flex-wrap:wrap;gap:5px}.msb-prog .dots i{width:14px;height:14px;border-radius:50%;background:#e3e8f1;transition:background .3s,transform .3s}
+.msb-prog .dots i.on{background:var(--c);box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 25%,transparent)}.msb-prog .dots i.next{background:#fff;box-shadow:inset 0 0 0 2px var(--c);animation:msb-pulse 1.6s ease-in-out infinite}
+@keyframes msb-pulse{50%{transform:scale(1.25)}}
+.msb-prog .msg{display:flex;align-items:center;gap:7px;margin-top:11px;font-size:14px;font-weight:600;color:#26354f;line-height:1.45}.msb-prog .msg svg{color:#0f7a4c;flex:none}
+.msb-meth{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0 0 10px}
+.msb-meth button{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:3px;padding:14px;border-radius:14px;border:1.5px solid #dfe5ef;background:#fff;transition:transform .18s,box-shadow .18s,border-color .18s}
+.msb-meth button:hover{transform:translateY(-2px);border-color:#9fb4d6;box-shadow:0 12px 22px -16px rgba(19,42,79,.5)}.msb-meth button:focus-visible{outline:3px solid #f2c94c;outline-offset:2px}
+.msb-meth button.on{border-color:#132a4f;background:linear-gradient(180deg,#eef3fc,#fff);box-shadow:0 0 0 3px rgba(19,42,79,.12)}
+.msb-meth .ic{width:38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;background:#e6edf9;color:#132a4f;margin-bottom:4px}.msb-meth button.on .ic{background:#132a4f;color:#fff}
+.msb-meth b{font-size:15px;color:#0e2a55}.msb-meth small{font-size:12.5px;color:#5d6b82;line-height:1.35}
+.msb-meth em{position:absolute;top:10px;right:10px;font-style:normal;font-size:10px;font-weight:800;letter-spacing:.04em;padding:2px 8px;border-radius:99px;background:#fff3d6;color:#8a5500}
+.msb-how{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 14px;padding:10px 14px;border-radius:12px;background:#f6f8fc;border:1px dashed #cdd6e6;font-size:13px;color:#26354f;font-weight:600}
+.msb-how span{display:inline-flex;align-items:center;gap:8px}.msb-how i{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#132a4f;color:#fff;font:800 12px/1 inherit;font-style:normal}
+.msb-rule{display:flex;gap:11px;align-items:flex-start;margin:0 0 14px;padding:11px 14px;border-radius:12px;background:#f6f1ff;border:1px solid #d9ccf5;color:#2d1b69;font-size:13px;line-height:1.5}.msb-rule svg{flex:none;margin-top:2px;color:#6d28d9}.msb-rule.warn{background:#fff7e6;border-color:#f0d9a0;color:#6b4300}.msb-rule.warn svg{color:#b45309}
+.msb-more{margin-top:16px;border:1px solid #e3e8f1;border-radius:14px;background:#fbfcfe}.msb-more>summary{cursor:pointer;padding:13px 16px;font-weight:800;font-size:14px;color:#0e2a55;list-style:none}.msb-more>summary::-webkit-details-marker{display:none}
+.msb-more>summary::before{content:'▸';display:inline-block;margin-right:9px;transition:transform .2s;color:#8a6a1f}.msb-more[open]>summary::before{transform:rotate(90deg)}.msb-more>summary small{font-weight:500;color:#5d6b82}
+.msb-more .in{padding:0 16px 14px}
+@media (max-width:700px){.msb-meth{gap:8px}.msb-meth button{padding:12px 6px;align-items:center;text-align:center}.msb-meth small,.msb-meth em{display:none}.msb-meth b{font-size:13.5px}.msb-prog{padding:13px 14px}.msb-prog .dots i{width:12px;height:12px}}
+.msb-wrap{background:#fff;border:1px solid #e3e8f1;border-radius:20px;box-shadow:0 1px 2px rgba(19,42,79,.06),0 18px 40px -24px rgba(19,42,79,.4);overflow:hidden;margin-bottom:18px}
+.msb-hero{position:relative;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:20px;align-items:center;padding:20px 28px 22px;color:#fff;background:radial-gradient(70% 140% at 100% 0%,rgba(230,195,94,.24),transparent 60%),linear-gradient(135deg,#081a38,#14336a 70%,#1b4388);isolation:isolate;overflow:hidden}
+.msb-hero::before{content:'';position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.09) 1px,transparent 1px);background-size:16px 16px;-webkit-mask-image:linear-gradient(90deg,transparent,#000);mask-image:linear-gradient(90deg,transparent,#000);z-index:-1}
+.msb-hero::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:linear-gradient(90deg,#8a6a1f,#e6c35e 50%,#8a6a1f)}
+.msb-hero.ready::after{height:5px;box-shadow:0 0 18px rgba(230,195,94,.9)}
+.msb-hero .k{display:inline-flex;align-items:center;gap:10px;font-size:11.5px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:#f1dca0}.msb-hero .k::before{content:'';width:26px;height:2px;background:#e6c35e}
+.msb-hero h2{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:6px 0 10px;font-family:'Fraunces','Playfair Display',Georgia,serif;font-size:38px;line-height:1.05;font-weight:700;letter-spacing:-.01em;text-shadow:0 2px 14px rgba(0,0,0,.3)}
+.msb-hero .rd{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;background:#16a34a;color:#fff;font:800 12px/1 'Plus Jakarta Sans',system-ui,sans-serif;letter-spacing:.04em;text-shadow:none;box-shadow:0 6px 16px -6px rgba(22,163,74,.9)}
+.msb-hero .chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.msb-hero .ch{display:inline-flex;align-items:center;gap:7px;padding:6px 13px;border:1px solid rgba(233,217,176,.4);border-radius:99px;background:rgba(255,255,255,.08);font-size:13px;font-weight:600;backdrop-filter:blur(4px)}
+.msb-hero .ch.hot{background:rgba(252,165,165,.18);border-color:rgba(252,165,165,.7);color:#ffe3e0}
+.msb-hero .acts{display:flex;gap:8px;flex-wrap:wrap}
+.msb-hero .acts button{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:10px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-weight:700;font-size:13.5px;cursor:pointer;transition:background .15s,transform .15s}
+.msb-hero .acts button:hover{background:rgba(255,255,255,.2);transform:translateY(-1px)}
+.msb-hero .acts button.gold{background:linear-gradient(180deg,#d9b657,#b8923a);border-color:#9c7a2b;color:#2b1f03;box-shadow:0 8px 18px -8px rgba(184,146,58,.9)}.msb-hero .acts button.gold:hover{background:linear-gradient(180deg,#e2c068,#c49d42)}
+.msb-hero .r{text-align:center}.msb-hero .ring{position:relative;width:118px;height:118px;margin:0 auto}.msb-hero .ring svg{width:118px;height:118px}
+.msb-hero .ring .c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.msb-hero .ring b{font-family:'Fraunces',Georgia,serif;font-size:36px;line-height:1;background:linear-gradient(180deg,#fff,#f1dca0);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}.msb-hero .ring span{font-size:12px;color:#cfdbf2;font-weight:600;margin-top:2px}
+.msb-hero .cap{margin-top:6px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#e9d9b0;font-weight:700}
+.msb-tiles{display:grid;grid-template-columns:repeat(var(--cols),minmax(0,1fr));gap:12px}
+.msb-tile{all:unset;box-sizing:border-box;cursor:pointer;position:relative;display:flex;flex-direction:column;gap:7px;padding:14px 14px 12px;border-radius:16px;background:#fff;border:1.5px solid #e3e8f1;border-top:5px solid var(--c);box-shadow:0 1px 2px rgba(19,42,79,.05);transition:transform .2s,box-shadow .2s,border-color .2s}
+.msb-tile:hover{transform:translateY(-3px);box-shadow:0 16px 28px -16px color-mix(in srgb,var(--c) 60%,#0b1c36)}
+.msb-tile:focus-visible{outline:3px solid #f2c94c;outline-offset:2px}
+.msb-tile.on{border-color:var(--c);background:linear-gradient(180deg,color-mix(in srgb,var(--c) 9%,#fff),#fff 60%);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 24%,transparent),0 16px 28px -18px color-mix(in srgb,var(--c) 70%,#0b1c36)}
+.msb-tile .top{display:flex;align-items:center;gap:10px}
+.msb-tile .mk{width:34px;height:34px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;background:linear-gradient(135deg,var(--c),color-mix(in srgb,var(--c) 65%,#fff));color:#fff;font-weight:800;font-size:13px;box-shadow:0 6px 12px -6px var(--c)}
+.msb-tile .rg{font-weight:800;font-size:14px;color:#0e2a55;line-height:1.15;min-width:0}.msb-tile .rg small{display:block;font-weight:600;font-size:11.5px;color:#5d6b82}
+.msb-tile .num{font-family:'Fraunces',Georgia,serif;font-size:30px;font-weight:700;line-height:1;color:var(--c)}
+.msb-tile .tr{height:7px;border-radius:99px;background:#eceff5;overflow:hidden}.msb-tile .tr i{display:block;height:100%;border-radius:99px;background:linear-gradient(90deg,var(--c),color-mix(in srgb,var(--c) 60%,#fff));transition:width .8s ease}
+.msb-tile .st{display:flex;gap:5px;flex-wrap:wrap;min-height:22px}
+.msb-tile .p{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:99px;font-size:11px;font-weight:800;white-space:nowrap}
+.msb-tile .p.ok{background:#e6f5ec;color:#0f7a4c}.msb-tile .p.warn{background:#fff3d6;color:#8a5500}.msb-tile .p.info{background:#e8f0fe;color:#1d4ed8}.msb-tile .p.mute{background:#f0f2f7;color:#6b778c}
+.msb-tile .who{font-size:11.5px;color:#5d6b82;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msb .msb-q{border-radius:10px;padding-left:6px!important;padding-right:6px!important;transition:background .15s}.msb .msb-q:hover{background:#f6f9fe}
+.msb .msb-q>div>button b:first-child{display:inline-flex;align-items:center;justify-content:center;min-width:38px;margin-right:8px;padding:2px 8px;border-radius:7px;background:#e6edf9;color:#10305f;font-size:12px;font-weight:800}
+@media (max-width:700px){.msb-hero{grid-template-columns:1fr;padding:16px 16px 18px;text-align:left}.msb-hero h2{font-size:30px;margin:4px 0 8px;padding-right:84px}.msb-hero .r{position:absolute;top:14px;right:14px;z-index:1}.msb-hero .cap{display:none}.msb-hero .ring,.msb-hero .ring svg{width:78px;height:78px}.msb-hero .ring b{font-size:22px}.msb-hero .ring span{font-size:10px}.msb-hero .k{font-size:10.5px}.msb-hero .ch{padding:5px 11px;font-size:12.5px}.msb-hero .acts button{flex:1 1 140px;justify-content:center}.msb-tile .num{font-size:26px}.msb-wrap{border-radius:16px}}
+.msb .msb-q .px-hbtn{height:32px!important;min-height:32px!important;padding:0 10px!important}.msb .msb-q input[type=checkbox]{margin-top:6px!important}.msb img.oi{max-height:70px}.msb .msb-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
 .msb .msb-strip::-webkit-scrollbar{display:none}.msb .msb-chip{scroll-snap-align:center;flex:0 0 auto;min-width:92px;text-align:left;padding:9px 12px;border-radius:14px;border:2px solid #e8e3d8;background:#fff;cursor:pointer;font-family:inherit}
 .msb .msb-chip.on{border-color:#b8923a;background:#faf1d9}.msb .msb-fab{position:fixed;right:14px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:34;border:none;border-radius:16px;background:#b8923a;color:#fff;font:800 14px inherit;font-family:inherit;padding:14px 18px;box-shadow:0 10px 24px rgba(184,146,58,.5)}
 @media (max-width:640px){.msb input:not([type=checkbox]):not([type=file]),.msb select,.msb textarea{font-size:16px!important}.msb .px-hbtn,.msb .px-btn{min-height:42px}.msb .px-card{border-radius:16px}}`
@@ -594,9 +685,33 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     <div className="msb">
       <style>{msbCss}</style>
       {setup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261206_mission_sainik_questions.sql</b> in Supabase to enable the builders.</div>}
-      <PremiumCard title={`${cfg.name} ${cfg.noun === 'Set' ? '' : cfg.noun === 'Test' ? 'Builder' : 'Test Builder'}`.trim()} subtitle={`Assembles automatically as setters upload — ${cfg.noun === 'Set' ? '25 questions per subject set' : totalQ(1) + ' questions per test'}. Only a section's own setter (or an admin) can upload; everyone else can view and print.`}
-        bodyStyle={{ padding: 0, overflowX: 'auto' }}>
-        {isMobile && (
+      <div className="msb-wrap">
+        <div className={'msb-hero' + (ready ? ' ready' : '')}>
+          <div className="l">
+            <div className="k">{cfg.name} {cfg.noun === 'Set' ? 'bank' : 'builder'}</div>
+            <h2>{tid(testNo)}{ready && <span className="rd"><Icon name="check" size={14} stroke={2.6} />Ready to print</span>}</h2>
+            <div className="chips">
+              {dateOf(testNo) && <span className="ch"><Icon name="schedule" size={15} />{new Date(dateOf(testNo) + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>}
+              {dateOf(testNo) && today && (() => { const d = Math.round((new Date(dateOf(testNo) + 'T00:00:00') - new Date(today + 'T00:00:00')) / 864e5); return <span className={'ch' + (d >= 0 && d <= 3 ? ' hot' : '')}><Icon name="clock" size={15} />{d === 0 ? 'Today' : d === 1 ? 'Tomorrow' : d > 0 ? `In ${d} days` : `${-d} day${d === -1 ? '' : 's'} ago`}</span> })()}
+              <span className="ch"><Icon name="practice" size={15} />{live(testNo).length} {cfg.noun === 'Set' ? 'subjects' : 'sections'}</span>
+            </div>
+            <div className="acts">
+              {(!embargo || isAdmin) && <button type="button" onClick={exportCsv}><Icon name="upload" size={16} style={{ transform: 'rotate(180deg)' }} />Export bank</button>}
+              <button type="button" onClick={() => printDoc(testNo, false)}><Icon name="print" size={16} />Question paper</button>
+              <button type="button" className="gold" onClick={() => printDoc(testNo, true)}><Icon name="certs" size={16} />Answer key</button>
+            </div>
+          </div>
+          <div className="r" role="img" aria-label={`${testCount(testNo)} of ${totalQ(testNo)} questions uploaded`}>
+            {(() => { const n = testCount(testNo), tot = totalQ(testNo), pct = tot ? Math.min(100, (n / tot) * 100) : 0, R = 52, C = 2 * Math.PI * R; return (
+              <div className="ring"><svg width="132" height="132" viewBox="0 0 132 132" style={{ transform: 'rotate(-90deg)' }}>
+                <circle cx="66" cy="66" r={R} fill="none" stroke="rgba(255,255,255,.16)" strokeWidth="11" />
+                <circle cx="66" cy="66" r={R} fill="none" stroke="url(#msbg)" strokeWidth="11" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pct / 100)} style={{ transition: 'stroke-dashoffset .9s ease' }} />
+                <defs><linearGradient id="msbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#b8923a" /><stop offset="1" stopColor="#f6e3a8" /></linearGradient></defs></svg>
+                <div className="c"><b>{n}</b><span>of {tot}</span></div></div>) })()}
+            <div className="cap">questions in</div>
+          </div>
+        </div>
+        {isMobile && showAll && (
           <div className="msb-strip" data-ti-skip role="tablist" aria-label={cfg.noun === 'Set' ? 'Choose a set' : 'Choose a test'} style={{ padding: '12px 12px 4px' }}>
             {cfg.tests.map(t => {
               const n = testCount(t.no), tot = totalQ(t.no), done = testReady(t.no)
@@ -611,14 +726,22 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             })}
           </div>
         )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 16px', borderBottom: `1px solid ${PX.line}`, background: PX.tint }}>
+          <button type="button" className="px-btn ghost" aria-label={`Previous ${(cfg.noun || 'Test').toLowerCase()}`} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)} style={{ minWidth: 44 }}>‹</button>
+          <select aria-label={`Choose a ${(cfg.noun || 'Test').toLowerCase()}`} value={testNo} onChange={e => setTestNo(Number(e.target.value))} style={{ flex: '1 1 180px', maxWidth: 320, fontWeight: 700 }}>
+            {cfg.tests.map(t => <option key={t.no} value={t.no}>{tid(t.no)}{t.date ? ` · ${fmtShort(t.date)}` : ''}{testReady(t.no) ? ' · ready' : ''}</option>)}
+          </select>
+          <button type="button" className="px-btn ghost" aria-label={`Next ${(cfg.noun || 'Test').toLowerCase()}`} disabled={cfg.tests[cfg.tests.length - 1].no === testNo} onClick={() => stepTest(1)} style={{ minWidth: 44 }}>›</button>
+          <button type="button" className="px-btn ghost" style={{ marginLeft: 'auto' }} aria-pressed={showAll} onClick={() => setShowAll(v => !v)}>{showAll ? `Show present ${(cfg.noun || 'Test').toLowerCase()} only` : `Show all ${cfg.tests.length} ${(cfg.noun || 'Test').toLowerCase()}s`}</button>
+        </div>
         {nextMine && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', background: PX.goldBg, borderBottom: `1px solid ${PX.goldLine}` }}>
             <span style={{ flex: '1 1 220px', fontSize: 13, color: PX.ink }}>⭐ <b>Yours:</b> {tid(nextMine.t)} · {nextMine.s.short} — {get(nextMine.t, nextMine.s.label).length}/{nextMine.s.q} questions in</span>
             <button type="button" className="px-btn gold" onClick={() => { setTestNo(nextMine.t); setSection(nextMine.s.label) }}>Continue →</button>
           </div>)}
-        {!isMobile && <table className="px-table" style={{ minWidth: 640 }}>
+        {!isMobile && showAll && <table className="px-table" style={{ minWidth: 640 }}>
           <thead><tr><th>{cfg.noun === 'Set' ? 'Set' : 'Test'}</th>{cfg.sections.map(s => <th key={s.label}>{s.short}</th>)}<th>Total</th><th /></tr></thead>
-          <tbody>{cfg.tests.map(t => (
+          <tbody>{cfg.tests.filter(t => showAll || t.no === testNo).map(t => (
             <tr key={t.no} style={t.no === testNo ? { background: PX.tint } : undefined}>
               <td><button style={{ all: 'unset', cursor: 'pointer', fontWeight: 700, color: PX.navy }} onClick={() => setTestNo(t.no)}>{tid(t.no)}</button><div style={{ fontSize: 11, color: PX.sub }}>{t.date ? fmtShort(t.date) : ''}</div></td>
               {cfg.sections.map(s => avail(t.no, s) ? <td key={s.label} style={mineAt(t.no, s) ? { boxShadow: `inset 0 0 0 2px ${PX.gold}`, borderRadius: 8 } : undefined} title={mineAt(t.no, s) ? 'Your section' : undefined}><CountPill n={get(t.no, s.label).length} q={s.q} /></td> : <td key={s.label} style={{ color: PX.faint || '#9aa5b8' }}>—</td>)}
@@ -627,36 +750,34 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             </tr>))}
           </tbody>
         </table>}
-      </PremiumCard>
-
-      <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{(!embargo || isAdmin) && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
-        {isMobile && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <button type="button" className="px-btn ghost" style={{ flex: 1 }} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)}>‹ Previous</button>
-            <button type="button" className="px-btn ghost" style={{ flex: 1 }} disabled={cfg.tests[cfg.tests.length - 1].no === testNo} onClick={() => stepTest(1)}>Next ›</button>
-          </div>
-        )}
-        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : `repeat(${live(testNo).length}, 1fr)`, gap: 8 }}>
-          {live(testNo).map(s => {
+        <div className="msb-tiles" style={{ padding: isMobile ? '12px' : '16px 18px 18px', '--cols': isMobile ? 2 : live(testNo).length }}>
+          {live(testNo).map((s, si) => {
             const n = get(testNo, s.label).length, st = secStatus(testNo, s)
             const ups = [...new Set(get(testNo, s.label).map(q => q.uploaded_by).filter(Boolean))]
+            const hue = SUBJ_HUE[s.key] || Object.values(SUBJ_HUE)[si % 6], on = s.label === section
+            const verified = !!signoff(testNo, s.label), full = byVersion ? flavourStatus(get(testNo, s.label), s.q) === 'ok' : n >= s.q
+            const label = byVersion ? (() => { const f = flavours(get(testNo, s.label), s.q); return f.length > 1 ? `${f.filter(x => x.complete).length}/${f.length} sets` : `${n}/${s.q}` })() : `${n}/${s.q}`
+            const who = ups.length ? ups.map(fullName).join(', ') : settersOf(testNo, s.label).map(fullName).join(', ') || '—'
             return (
-              <button key={s.label} onClick={() => setSection(s.label)} style={{ all: 'unset', cursor: 'pointer', padding: 10, borderRadius: 12, background: s.label === section ? '#fff' : PX.tint, border: `2px solid ${s.label === section ? PX.gold : 'transparent'}`, boxSizing: 'border-box' }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: PX.sub }}>{s.short} <span style={{ fontWeight: 400 }}>· {range(s)}</span></div>
-                <div style={{ fontFamily: PX.serif, fontSize: 22, color: col(st) }}>{byVersion ? (() => { const f = flavours(get(testNo, s.label), s.q); return f.length > 1 ? `${f.filter(x => x.complete).length}/${f.length} sets` : `${n}/${s.q}` })() : `${n}/${s.q}`}</div>
-                <div style={{ fontSize: 11, color: PX.sub }}>{ups.length ? ups.map(fullName).join(', ') : settersOf(testNo, s.label).map(fullName).join(', ') || '—'}</div>
-                {openNotes(testNo, s.label) > 0 && <div style={{ fontSize: 11, color: PX.warn, fontWeight: 700 }}>💬 {openNotes(testNo, s.label)} open note{openNotes(testNo, s.label) > 1 ? 's' : ''}</div>}
-                {signoff(testNo, s.label) ? <div style={{ fontSize: 11, color: PX.ok, fontWeight: 700 }}>✓ Verified</div> : (byVersion ? flavourStatus(get(testNo, s.label), s.q) === 'ok' : n >= s.q) ? <div style={{ fontSize: 11, color: PX.warn }}>Awaiting verification</div> : null}
+              <button key={s.label} type="button" className={'msb-tile' + (on ? ' on' : '')} aria-pressed={on} onClick={() => setSection(s.label)} style={{ '--c': hue }}>
+                <div className="top"><span className="mk">{String(s.short).slice(0, 2)}</span><span className="rg">{s.short}<small>{range(s)}</small></span></div>
+                <div className="num" style={{ color: st === 'none' ? '#8a93a6' : undefined }}>{label}</div>
+                <div className="tr"><i style={{ width: Math.min(100, s.q ? (n / s.q) * 100 : 0) + '%' }} /></div>
+                <div className="st">
+                  {verified ? <span className="p ok"><Icon name="check" size={12} stroke={2.6} />Verified</span> : full ? <span className="p warn">Awaiting verification</span> : n ? <span className="p info">In progress</span> : <span className="p mute">Not started</span>}
+                  {openNotes(testNo, s.label) > 0 && <span className="p warn">{openNotes(testNo, s.label)} note{openNotes(testNo, s.label) > 1 ? 's' : ''}</span>}
+                </div>
+                <div className="who">{who}</div>
               </button>
             )
           })}
         </div>
-      </PremiumCard>
+      </div>
 
-      {isMobile && !showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· health check, print, Word, OMR</span></span><span>▸</span></button>}
-      {(!isMobile || showTools) && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
-        right={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>{isAdmin && onLock && <button className="px-hbtn" onClick={() => onLock(`lock:${series}:${testNo}`, !isLocked(testNo))}>{isLocked(testNo) ? '🔓 Unlock paper' : '🔒 Lock paper'}</button>}<span className="px-hbtn" style={{ pointerEvents: 'none' }}>{health.score}% healthy</span></span>}>
+
+      {!showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· {health.score}% healthy{isMobile ? '' : ' · versions, preview, Word, OMR'}</span></span><span>▸</span></button>}
+      {showTools && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
+        right={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>{isAdmin && onLock && <button className="px-hbtn" onClick={() => onLock(`lock:${series}:${testNo}`, !isLocked(testNo))}>{isLocked(testNo) ? '🔓 Unlock paper' : '🔒 Lock paper'}</button>}<span className="px-hbtn" style={{ pointerEvents: 'none' }}>{health.score}% healthy</span><button className="px-hbtn" onClick={() => setShowTools(false)}>Hide</button></span>}>
         {isLocked(testNo) && <div role="status" style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0', color: '#5c4510', fontSize: 13, fontWeight: 600 }}>🔒 This paper is locked by an admin. It can be viewed and printed but not changed{isAdmin ? ' (you can, as an admin)' : ''}.</div>}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16 }}>
           <div>
@@ -755,11 +876,87 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </div>
       </PremiumCard>}
 
-      <div id="msb-editor" style={{ scrollMarginTop: 70 }}>
-      <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${byVersion && flav.length > 1 ? `${flav.length} teachers · yours ${myCount}/${sec.q}` : `${secList.length}/${sec.q} questions`} · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
+      <div id="msb-editor" style={{ scrollMarginTop: 140 }}>
+      <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${byVersion && flav.length > 1 ? `${flav.length} teachers · yours ${myCount}/${sec.q}` : (secList.length > sec.q ? `${secList.length} uploaded · ${sec.q} needed` : `${secList.length}/${sec.q} questions`)} · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
         right={<span style={{ display: 'flex', gap: 8 }}>{(byVersion ? flavourStatus(secList, sec.q) === 'ok' : secList.length >= sec.q) && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
         {mayEdit ? (
           <>
+            {overview ? (
+              <div className="msb-prog" style={{ '--c': secHue }}>
+                <div className="hd"><span className="ttl">{sec.short || section} · section overview</span><span className="cnt"><b>{secList.length}</b> uploaded · {sec.q} needed</span></div>
+                <div className="chipsrow">{flav.map(f => <span key={f.by} className={f.complete ? 'ok' : 'part'}><i>{f.letter}</i>{fullName(f.by)} · {Math.min(f.count, sec.q)}/{sec.q}{f.complete ? <Icon name="check" size={12} stroke={3} /> : null}</span>)}</div>
+                <div className="msg">{signoff(testNo, section) ? <><Icon name="check" size={15} stroke={2.6} />Verified — this section is locked in.</>
+                  : flav.length && flav.every(f => f.complete) ? <><Icon name="check" size={15} stroke={2.6} />{flav.length === 1 ? 'The set is complete' : `All ${flav.length} sets are complete`} — ready for verification. You can still add questions below.</>
+                    : <>{flav.filter(f => f.complete).length} of {flav.length} set{flav.length === 1 ? '' : 's'} complete. You can add questions below, or wait for the setters.</>}</div>
+              </div>
+            ) : (
+            <div className="msb-prog" style={{ '--c': secHue }}>
+              <div className="hd"><span className="ttl">Your progress in {sec.short || section}</span><span className="cnt"><b>{Math.min(myCount, sec.q)}</b> of {sec.q}</span></div>
+              {sec.q <= 60 ? <div className="dots" role="img" aria-label={`${Math.min(myCount, sec.q)} of ${sec.q} questions added`}>{Array.from({ length: sec.q }, (_, i) => <i key={i} className={i < myCount ? 'on' : i === myCount ? 'next' : ''} />)}</div>
+                : <MiniBar pct={(myCount / sec.q) * 100} width={'100%'} />}
+              <div className="msg">{signoff(testNo, section) ? <><Icon name="check" size={15} stroke={2.6} />Verified — this section is locked in. Well done.</>
+                : myCount >= sec.q ? <><Icon name="check" size={15} stroke={2.6} />Section complete — it is ready for verification.{strictPlan ? ` New questions you add now go to the Practice bank (${section} · Set ${practiceSetFor(section)}).` : ''}</>
+                  : myCount === 0 ? <>Let's begin. Choose how you want to add questions below — your first one takes about a minute.</>
+                    : myCount < sec.q / 2 ? <>Good start. {sec.q - myCount} more to go — every question is saved the moment you add it.</>
+                      : <>Over halfway. Just {sec.q - myCount} more.</>}</div>
+            </div>)}
+            {strictPlan && (chapters.length ? (
+              <div className="msb-rule" role="note"><Icon name="syllabus" size={18} /><span><b>The paper holds {sec.q} questions per section.</b> Only {chapters.length === 1 ? 'the planned chapter is' : 'the planned chapters are'} accepted. Extra questions are saved to the Practice bank ({section} · Set {practiceSetFor(section)}) under the same chapter.</span></div>
+            ) : (
+              <div className="msb-rule warn" role="note"><Icon name="alert" size={18} /><span><b>No chapter is planned yet</b> for {tid(testNo)} · {sec.short || section} (Mission Sainik → Syllabus). Any chapter is accepted until it is. The paper holds {sec.q}; extras go to the Practice bank.</span></div>
+            ))}
+            {chapters.length > 0 && (
+              <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
+                <datalist id="msb-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
+                <b style={{ fontSize: 13, color: PX.navy }}>📘 Syllabus plan · {tid(testNo)} · {section}</b>
+                <div style={{ fontSize: 12.5, color: PX.sub, margin: '2px 0 8px' }}>Set the questions on {chapters.length === 1 ? 'this chapter' : 'these chapters'}. {chapters.length > 1 ? 'Tap a chapter to tag the next upload with it. ' : 'New questions are tagged with it automatically. '}The number shows how many questions you already have on each.</div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {chapters.map(ch => { const on = chapterPick === ch || chapters.length === 1; return (
+                    <button key={ch} type="button" aria-pressed={on} onClick={() => setChapterPick(chapterPick === ch ? '' : ch)} style={{ padding: '5px 12px', borderRadius: 99, border: `1.5px solid ${on ? '#7c3aed' : '#d9ccf5'}`, background: on ? '#ede4ff' : '#fff', color: '#4c1d95', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{ch} · {chapterCount(ch)}</button>) })}
+                </div>
+                {untagged > 0 && <div style={{ fontSize: 12, color: PX.warn, marginTop: 6 }}>{untagged} question{untagged === 1 ? '' : 's'} not tagged with a planned chapter.</div>}
+              </div>)}
+            <div className="msb-meth" data-ti-skip role="tablist" aria-label="How to add questions">
+              {[['one', 'marks', 'One by one', 'Type a question, tap the answer. Saved instantly.', isMobile ? 'Best on a phone' : 'Easy to start'], ['cards', 'practice', 'Many at once', 'Fill several question cards, then upload together.', isMobile ? '' : 'Fastest on a computer'], ['paste', 'material', 'Paste or file', 'Bring questions from Word, a .txt or a .csv file.', 'Already typed?']].map(([k, ic, t, d, tag]) => (
+                <button key={k} type="button" role="tab" aria-selected={addMode === k} className={addMode === k ? 'on' : ''} onClick={() => setAddMode(k)}>
+                  <span className="ic"><Icon name={ic} size={20} /></span><b>{t}</b><small>{d}</small>{tag ? <em>{tag}</em> : null}
+                </button>))}
+            </div>
+            {addMode !== 'one' && <div className="msb-how" aria-label="How it works">
+              {(addMode === 'cards' ? ['Fill one card per question', 'Mark the answer (Alt + A to D)', 'Upload all cards together'] : ['Paste text or load a file', 'Check the preview it builds', 'Upload when it looks right']).map((t, i) => <span key={t}><i>{i + 1}</i>{t}</span>)}
+            </div>}
+            {addMode === 'one' ? (
+              <MissionSainikQuickAdd key={`${testNo}:${section}`} chapters={chaptersOf(testNo, section)} strict={strictPlan && chaptersOf(testNo, section).length > 0} overflowLabel={strictPlan ? `${section} · Practice Set ${practiceSetFor(section)}` : ''} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
+            ) : addMode === 'cards' ? (
+              <>
+                <MultiQuestionAdder noExplanation chapters={chaptersOf(testNo, section)} key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, position: 'sticky', bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom))' : 0, zIndex: 4, background: '#fff', padding: '10px 0', borderTop: `1px solid ${line}` }}>
+                  <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>{parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`}</span>
+                  <button className="px-btn ghost" onClick={() => setCards([blankCard()])} disabled={cards.length === 1 && !cards[0].question}>Clear all</button>
+                  <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : `⬆ Upload ${parsed.questions.length || ''} question${parsed.questions.length === 1 ? '' : 's'}`}</button>
+                </div>
+              </>
+            ) : (
+              <>
+            <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 8 }}>
+              Paste your questions in this format (or load a .txt / .csv file). For a reading passage, put a “Passage: …” line before its questions and “End passage” after them; attach figures with ✎ on a question:
+              <pre style={{ background: PX.tint, padding: 8, borderRadius: 8, fontSize: 12, margin: '6px 0', whiteSpace: 'pre-wrap' }}>{`Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B\nExp: Same denominator, add numerators.\nTopic: Fractions\nLevel: Easy`}</pre>
+            </div>
+            <textarea className="px-input" rows={9} value={text} onChange={e => setText(e.target.value)} aria-label="Paste questions here" placeholder="Paste questions here…" style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+              <button className="px-hbtn" onClick={downloadTemplate} type="button">⬇ CSV template</button>
+              <input type="file" aria-label="Load questions from a .txt or .csv file" accept=".txt,.csv,text/plain,text/csv" onChange={loadFile} style={{ fontSize: 12 }} />
+              <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>
+                {text.trim() ? (parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : parsed.questions.length ? `${parsed.questions.length} question(s) ready to upload` : '⚠ ' + detectQuestions(text).text) : ''}
+              </span>
+              <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : '⬆ Upload questions'}</button>
+            </div>
+            <PastePreview questions={parsed.questions} errors={parsed.errors} startNo={startOf(section) + get(testNo, section).length} title={`Section: ${sec.title || section}`} />
+              </>
+            )}
+            <details className="msb-more" open={byVersion || secList.length > sec.q || multiTeachers}>
+              <summary>More about this section <small>· teachers, versions, backup &amp; restore</small></summary>
+              <div className="in">
             {byVersion && flav.length > 0 && (
               <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f3f8ff', border: '1px solid #c9dcf7' }}>
                 <b style={{ fontSize: 13, color: PX.navy }}>{flav.length > 1 ? `${flav.length} teachers each set their own ${sec.q} questions` : 'Each teacher sets their own set'}</b>
@@ -794,17 +991,6 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                 <input type="checkbox" checked={byVersion} disabled={!isAdmin || !onSetting} onChange={e => onSetting?.('pre_versions', e.target.checked)} />
                 <span style={{ flex: '1 1 260px' }}><b style={{ fontSize: 13, color: PX.navy }}>Multiple sets on the same syllabus</b><span style={{ display: 'block', fontSize: 12.5, color: PX.sub }}>{byVersion ? 'Each teacher writes their own full set of questions for the same chapter. The paper prints as Version A, B, C so students get different versions.' : (isAdmin ? 'Off: teachers share one set (the admin picks the best questions). Turn on to let each teacher write a full set.' : 'Off: teachers share one set.')}</span></span>
               </label>)}
-            {chapters.length > 0 && (
-              <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
-                <datalist id="msb-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
-                <b style={{ fontSize: 13, color: PX.navy }}>📘 Syllabus plan · {tid(testNo)} · {section}</b>
-                <div style={{ fontSize: 12.5, color: PX.sub, margin: '2px 0 8px' }}>Set the questions on {chapters.length === 1 ? 'this chapter' : 'these chapters'}. {chapters.length > 1 ? 'Tap a chapter to tag the next upload with it. ' : 'New questions are tagged with it automatically. '}The number shows how many questions you already have on each.</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {chapters.map(ch => { const on = chapterPick === ch || chapters.length === 1; return (
-                    <button key={ch} type="button" aria-pressed={on} onClick={() => setChapterPick(chapterPick === ch ? '' : ch)} style={{ padding: '5px 12px', borderRadius: 99, border: `1.5px solid ${on ? '#7c3aed' : '#d9ccf5'}`, background: on ? '#ede4ff' : '#fff', color: '#4c1d95', fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>{ch} · {chapterCount(ch)}</button>) })}
-                </div>
-                {untagged > 0 && <div style={{ fontSize: 12, color: PX.warn, marginTop: 6 }}>{untagged} question{untagged === 1 ? '' : 's'} not tagged with a planned chapter.</div>}
-              </div>)}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', margin: '0 0 12px', padding: '8px 10px', borderRadius: 12, background: '#faf8f3', border: `1px solid ${line}` }}>
               <b style={{ fontSize: 12.5 }}>📦 Question bank</b>
               <button type="button" className="px-hbtn" onClick={() => exportBank('section')}>⬇ This section</button>
@@ -813,40 +999,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               <label className="px-hbtn" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>⬆ Import JSON<input type="file" accept=".json,application/json" aria-label="Import a question bank file" onChange={importBank} style={{ display: 'none' }} /></label>
               <span style={{ fontSize: 11.5, color: PX.sub }}>{isAdmin ? 'Back up, move to another series, or share with another institute. Duplicates are skipped.' : 'You can export or import your own section. Duplicates are skipped.'}</span>
             </div>
-            <div data-ti-skip role="tablist" aria-label="How to add questions" style={{ display: 'inline-flex', padding: 3, background: '#f4f1e8', borderRadius: 12, gap: 2, marginBottom: 12 }}>
-              {[['one', '☝️ One by one'], ['cards', '🗂️ Many at once'], ['paste', '📋 Paste / file']].map(([k, l]) => (
-                <button key={k} type="button" role="tab" aria-selected={addMode === k} onClick={() => setAddMode(k)} style={{ padding: '8px 14px', borderRadius: 9, border: 'none', background: addMode === k ? '#fff' : 'transparent', boxShadow: addMode === k ? '0 1px 4px rgba(15,27,46,.15)' : 'none', color: addMode === k ? PX.ink : PX.sub, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>{l}</button>
-              ))}
-            </div>
-            {addMode === 'one' ? (
-              <MissionSainikQuickAdd chapters={chaptersOf(testNo, section)} count={myCount} need={sec.q} startNo={startOf(section) + myCount} busy={busy} isMobile={isMobile} onSave={q => insertQuestions([q])} />
-            ) : addMode === 'cards' ? (
-              <>
-                <MultiQuestionAdder noExplanation chapters={chaptersOf(testNo, section)} key={`${series}:${testNo}:${section}`} draftKey={`msb-draft:${series}:${testNo}:${section}`} cards={cards} setCards={setCards} remaining={sec.q - myCount} startNo={startOf(section) + myCount} title={`Section: ${sec.title || section}`} existing={secList.map(q => q.question)} isMobile={isMobile} />
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12, position: 'sticky', bottom: isMobile ? 'calc(72px + env(safe-area-inset-bottom))' : 0, zIndex: 4, background: '#fff', padding: '10px 0', borderTop: `1px solid ${line}` }}>
-                  <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>{parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : `${parsed.questions.length} question(s) ready to upload`}</span>
-                  <button className="px-btn ghost" onClick={() => setCards([blankCard()])} disabled={cards.length === 1 && !cards[0].question}>Clear all</button>
-                  <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : `⬆ Upload ${parsed.questions.length || ''} question${parsed.questions.length === 1 ? '' : 's'}`}</button>
-                </div>
-              </>
-            ) : (
-              <>
-            <div style={{ fontSize: 12.5, color: PX.sub, marginBottom: 8 }}>
-              Paste your questions in this format (or load a .txt / .csv file). For a reading passage, put a “Passage: …” line before its questions and “End passage” after them; attach figures with ✎ on a question:
-              <pre style={{ background: PX.tint, padding: 8, borderRadius: 8, fontSize: 12, margin: '6px 0', whiteSpace: 'pre-wrap' }}>{`Q1. What is 3/4 + 1/4?\nA) 1/2\nB) 1\nC) 3/4\nD) 2\nAns: B\nExp: Same denominator, add numerators.\nTopic: Fractions\nLevel: Easy`}</pre>
-            </div>
-            <textarea className="px-input" rows={9} value={text} onChange={e => setText(e.target.value)} aria-label="Paste questions here" placeholder="Paste questions here…" style={{ resize: 'vertical', fontFamily: 'monospace', fontSize: 12 }} />
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
-              <button className="px-hbtn" onClick={downloadTemplate} type="button">⬇ CSV template</button>
-              <input type="file" aria-label="Load questions from a .txt or .csv file" accept=".txt,.csv,text/plain,text/csv" onChange={loadFile} style={{ fontSize: 12 }} />
-              <span style={{ fontSize: 12.5, color: parsed.errors.length ? PX.bad : PX.sub }}>
-                {text.trim() ? (parsed.errors.length ? parsed.errors.slice(0, 2).join(' · ') : parsed.questions.length ? `${parsed.questions.length} question(s) ready to upload` : '⚠ ' + detectQuestions(text).text) : ''}
-              </span>
-              <button className="px-btn gold" style={{ marginLeft: 'auto' }} disabled={busy || !parsed.questions.length || parsed.errors.length > 0} onClick={upload}>{busy ? 'Uploading…' : '⬆ Upload questions'}</button>
-            </div>
-            <PastePreview questions={parsed.questions} errors={parsed.errors} startNo={startOf(section) + get(testNo, section).length} title={`Section: ${sec.title || section}`} />
-              </>
-            )}
+              </div>
+            </details>
           </>
         ) : (
           <div style={{ padding: '8px 12px', borderRadius: 10, background: PX.tint, fontSize: 13, color: PX.sub }}>
@@ -856,7 +1010,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>
       </div>
 
-      <PremiumCard title={`Review notes (${notesOf(testNo, section).length})`} subtitle={`${tid(testNo)} · ${section} — a verifier can ask for changes here; open notes block verification until they are resolved`}>
+      {!(showNotes || openNotes(testNo, section) > 0) ? <button type="button" className="px-btn ghost" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', margin: '0 0 14px', padding: '12px 16px', textAlign: 'left' }} onClick={() => setShowNotes(true)}><span><b>💬 Review notes ({notesOf(testNo, section).length})</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· ask a verifier for changes</span></span><span>▸</span></button> : <PremiumCard title={`Review notes (${notesOf(testNo, section).length})`} subtitle={`${tid(testNo)} · ${section} — a verifier can ask for changes here; open notes block verification until they are resolved`}>
+        {openNotes(testNo, section) === 0 && <div style={{ textAlign: 'right', marginBottom: 6 }}><button type="button" className="px-hbtn" onClick={() => setShowNotes(false)}>Hide</button></div>}
         {notesOf(testNo, section).length === 0 && <div style={{ fontSize: 13, color: PX.sub, marginBottom: 8 }}>No notes yet.</div>}
         {notesOf(testNo, section).map(r => (
           <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderTop: `1px solid ${line}`, opacity: r.status === 'resolved' ? 0.65 : 1 }}>
@@ -872,7 +1027,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           <input className="px-input" style={{ flex: '1 1 240px' }} value={newNote} onChange={e => setNewNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNote()} placeholder="e.g. Q7 has two correct answers; Q12 needs an explanation" aria-label="New review note" />
           <button className="px-btn gold" onClick={addNote}>Add note</button>
         </div>
-      </PremiumCard>
+      </PremiumCard>}
 
       <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see its options and answer' : ''}
         right={mayEdit && secList.length ? <button className="px-hbtn" onClick={() => setPicked(picked.length === secList.length ? [] : secList.map(q => q.id))}>{picked.length === secList.length ? 'Clear selection' : 'Select all'}</button> : null}>
@@ -892,8 +1047,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <button className="px-btn ghost" style={{ color: PX.bad }} onClick={deletePicked}>🗑 Delete</button>
           </div>)}
         {embargoed(testNo, section) ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>🔒 {secList.length} question(s) uploaded. The questions stay hidden from other staff until {fmtShort(dateOf(testNo))} (embargo).</div>
-          : !secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : listShown.map(({ q, i }) => (
-          <div key={q.id} style={{ borderTop: i ? `1px solid ${line}` : 'none', padding: isMobile ? '12px 0' : '8px 0' }}>
+          : !secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : listShown.slice(0, limN).map(({ q, i }) => (
+          <div key={q.id} className="msb-q" style={{ borderTop: i ? `1px solid ${line}` : 'none', padding: isMobile ? '12px 0' : '8px 0' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: isMobile ? 'center' : 'flex-start', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
               {mayEdit && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}
               <button style={{ all: 'unset', cursor: 'pointer', flex: isMobile ? '1 1 calc(100% - 36px)' : 1, fontSize: isMobile ? 14.5 : 13.5, lineHeight: 1.45 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.passage ? <span title="Has a reading passage">📖 </span> : null}{q.image_data ? <span title="Has a figure">🖼 </span> : null}<span dangerouslySetInnerHTML={{ __html: mathToHtml(q.question) }} /></button>
@@ -947,15 +1102,16 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             )}
           </div>
         ))}
+        {listShown.length > limN && <div style={{ textAlign: 'center', paddingTop: 10, borderTop: `1px solid ${line}` }}><button type="button" className="px-btn ghost" onClick={() => setLim({ k: `${testNo}|${section}|${qSearch}|${qLevel}`, n: limN + 15 })}>Show {Math.min(15, listShown.length - limN)} more · {limN} of {listShown.length} shown</button></div>}
       </PremiumCard>
-      <PremiumCard title={`Recycle bin (${bin.length})`} subtitle="Deleted questions can be restored by the setter or an admin" right={<button className="px-hbtn" onClick={() => setShowBin(v => !v)}>{showBin ? 'Hide' : 'Show'}</button>}>
+      {bin.length > 0 && (!showBin ? <button type="button" className="px-btn ghost" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', margin: '0 0 14px', padding: '12px 16px', textAlign: 'left' }} onClick={() => setShowBin(true)}><span><b>🗑 Recycle bin ({bin.length})</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· restore deleted questions</span></span><span>▸</span></button> : <PremiumCard title={`Recycle bin (${bin.length})`} subtitle="Deleted questions can be restored by the setter or an admin" right={<button className="px-hbtn" onClick={() => setShowBin(v => !v)}>{showBin ? 'Hide' : 'Show'}</button>}>
         {showBin && (!bin.length ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Empty.</div> : bin.slice(0, 100).map(q => (
           <div key={q.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${line}`, fontSize: 13 }}>
             <span style={{ flex: 1 }}>{embargoed(q.test_no, q.section) ? '(hidden until test date)' : q.question.slice(0, 90)} <span style={{ color: PX.sub, fontSize: 11 }}>· {tid(q.test_no)} · {q.section} · deleted by {q.deleted_by || '?'}</span></span>
             {(isAdmin || canEdit(q.test_no, q.section)) && <button className="px-hbtn" onClick={() => restore(q)}>↩ Restore</button>}
             {isAdmin && <button className="px-hbtn" onClick={() => purge(q)} aria-label="Delete forever">✖</button>}
           </div>)))}
-      </PremiumCard>
+      </PremiumCard>)}
       {preview && (
         <div className="msx-overlay" onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
           <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Paper preview" onClick={e => e.stopPropagation()} style={{ width: 'min(900px,100%)', height: '88vh', background: '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

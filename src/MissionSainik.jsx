@@ -30,6 +30,7 @@ import MissionSainikAdmit from './MissionSainikAdmit'
 import MissionSainikMockMarks from './MissionSainikMockMarks'
 import MissionSainikCertificates from './MissionSainikCertificates'
 import { retarget, practiceGive, nextVerifier, settersOfRow, settersLabel } from './lib/missionSainikAllot'
+import { diffPlan } from './data/syllabusPlan2026'
 import MissionSainikAdmin from './MissionSainikAdmin'
 import { OfficialSyllabus, SyllabusManual } from './MissionSainikSyllabusRef'
 import MissionSainikMaterial from './MissionSainikMaterial'
@@ -1453,10 +1454,23 @@ function MissionSainikInner({ currentUser: sessionUser }) {
     if (error) return setMsg('❌ ' + error.message)
     audit('syllabus_suggest', null, { rows: rowsNew.length }); setMsg(`✅ ${rowsNew.length} chapter(s) suggested — edit any you want to change`); loadExtra()
   }
+  // Load the syllabus plan 2026-27 (120 chapters, from the plan document) after showing exactly what will be filled and what will be replaced.
+  const loadPlan2026 = async () => {
+    const d = diffPlan(syl)
+    if (!d.write.length) return setMsg('✅ The syllabus plan 2026-27 is already loaded — all 120 chapters match.')
+    const eg = d.change.slice(0, 4).map(c => `  • PMT-${String(c.test_no).padStart(2, '0')} ${c.subject}: “${c.was}” → “${c.chapter}”`).join('\n')
+    const ok = window.confirm(`Load the syllabus plan 2026-27?\n\n• ${d.add.length} empty cell${d.add.length === 1 ? '' : 's'} will be filled\n• ${d.change.length} cell${d.change.length === 1 ? '' : 's'} will be REPLACED with the plan's chapter${d.change.length ? '\n' + eg + (d.change.length > 4 ? `\n  …and ${d.change.length - 4} more` : '') : ''}\n• ${d.keep.length} already match\n\nContinue?`)
+    if (!ok) return
+    const at = new Date().toISOString()
+    const { error } = await supabase.from(SYL_TABLE).upsert(d.write.map(r => ({ test_no: r.test_no, subject: r.subject, chapter: r.chapter, updated_by: currentUser?.name || '', updated_at: at })), { onConflict: 'test_no,subject' })
+    if (error) return setMsg('❌ ' + error.message)
+    audit('syllabus_plan_2026', null, { filled: d.add.length, replaced: d.change.length, kept: d.keep.length })
+    setMsg(`✅ Syllabus plan 2026-27 loaded — ${d.add.length} filled, ${d.change.length} replaced, ${d.keep.length} already matched`); loadExtra()
+  }
   const syllabusTab = (
     <>{setupNote}
       <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type or pick a suggested chapter, then press Enter or click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isRealAdmin && <button className="px-hbtn" onClick={suggestPlan}>✨ Suggest plan</button>}<button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button><button className="px-hbtn" onClick={printSyllabusPlan}>🖨 Print</button><button className="px-hbtn" onClick={planDocx}>📝 Word</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isRealAdmin && <button className="px-hbtn" onClick={loadPlan2026} title="Fill the 120 chapters from the Mission Sainik syllabus plan 2026-27 document">📘 Load plan 2026-27</button>}{isRealAdmin && <button className="px-hbtn" onClick={suggestPlan}>✨ Suggest plan</button>}<button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button><button className="px-hbtn" onClick={printSyllabusPlan}>🖨 Print</button><button className="px-hbtn" onClick={planDocx}>📝 Word</button></span>}>
         {sylImport !== null && (
           <div style={{ padding: 16, borderBottom: `1px solid ${PX.line}` }}>
             <div style={{ fontSize: 13, color: PX.sub, marginBottom: 6 }}>Paste lines as <b>test, subject, chapter</b> (comma or tab; subject can be Maths, Reasoning, Science, GK, Grammar or Vocab). A spreadsheet paste works. <button className="px-btn ghost" style={{ marginLeft: 6 }} onClick={exportSyllabusLong}>Download template</button></div>
