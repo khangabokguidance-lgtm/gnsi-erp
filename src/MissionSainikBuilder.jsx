@@ -15,7 +15,7 @@ import { mathToHtml, mathPlain, setMathStacked, MATH_CSS } from './lib/mathText'
 import { CountPill, Pill, MiniBar } from './MissionSainikUI'
 import { Icon } from './MissionSainikIcons'
 import { settersOfRow } from './lib/missionSainikAllot'
-import { routePreMock, matchChapter } from './lib/missionSainikPlanRule'
+import { routePreMock, matchChapter, offPlan, planState } from './lib/missionSainikPlanRule'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
@@ -200,6 +200,12 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const clearSignoff = async (t, s) => { if (signoff(t, s)) await supabase.from('mission_sainik_signoffs').delete().eq('series', series).eq('test_no', t).eq('section', s) }
   const verify = async (t, s) => {
     if (!canVerify(t, s)) return setMsg('❌ A different panel member (not the uploader) must verify.')
+    if (strictPlan) {
+      const pl = chaptersOf(t, s)
+      if (planState(pl) === 'multi') return setMsg(`❌ ${tid(t)} · ${s} lists ${pl.length} chapters in the Syllabus Plan; keep just one before verifying.`)
+      const off = offPlan(get(t, s), pl)
+      if (off.length) return setMsg(`❌ ${off.length} question${off.length === 1 ? ' is' : 's are'} not on the planned chapter “${pl[0]}”. Fix or delete ${off.length === 1 ? 'it' : 'them'} before verifying.`)
+    }
     const n = get(t, s).length
     const { error } = await supabase.from('mission_sainik_signoffs').upsert({ series, test_no: t, section: s, verified_by: currentUser?.name || '', verified_at: new Date().toISOString() }, { onConflict: 'series,test_no,section' })
     if (error) return setMsg('❌ ' + error.message)
@@ -227,6 +233,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     if (dupes.length) { setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”.${list.length > 1 ? ' Remove them and upload again.' : ''}`); return false }
     const chs = chaptersOf(testNo, section), defTopic = chs.includes(chapterPick) ? chapterPick : chs.length === 1 ? chs[0] : ''   // a question without a topic gets the planned chapter
     let paperList = list.map(q => ({ ...q, topic: q.topic || defTopic || q.topic })), extra = []
+    if (strictPlan && planState(chs) === 'multi') { setMsg(`❌ ${tid(testNo)} · ${section} has ${chs.length} chapters in the Syllabus Plan. Every teacher must set the one same chapter, so an admin must keep just one (Mission Sainik → Syllabus).`); return false }
     if (strictPlan) {
       const r = routePreMock({ list, chapters: chs, defTopic, room: sec.q - have })
       if (r.error) { setMsg(`❌ ${tid(testNo)} · ${section} follows the Syllabus Plan: ${r.planned.join(' / ')}. ${r.bad[0].topic ? `“${r.bad[0].topic}” is not planned for this test.` : 'Choose the chapter first.'}${r.bad.length > 1 ? ` (${r.bad.length} questions)` : ''}`); return false }
@@ -530,25 +537,31 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     const places = new Set(list.map(q => `${q.test_no}|${q.section}`))
     const keep = places.size > 1 && window.confirm(`The file has ${list.length} questions from ${places.size} places.\n\nOK = keep their original test and section.\nCancel = add all of them to ${tid(testNo)} · ${section}.`)
     const norm = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
-    const seen = new Map(), rows = []; let dupes = 0, denied = 0
+    const seen = new Map(), rows = []; let dupes = 0, denied = 0, offChap = 0
     for (const q of list) {
       const t = keep ? Number(q.test_no) : testNo, sc = keep ? q.section : section
       if (!cfg.tests.some(x => x.no === t) || !cfg.sections.some(x => x.label === sc)) { denied++; continue }
       if (!canEdit(t, sc)) { denied++; continue }
+      let planTopic
+      if (strictPlan) {   // Pre Mock: only the one planned chapter of that test and section
+        const pl = chaptersOf(t, sc)
+        if (pl.length > 1) { offChap++; continue }
+        if (pl.length) { planTopic = matchChapter(pl, q.topic); if (!planTopic) { offChap++; continue } }
+      }
       const key = `${t}|${sc}`
       if (!seen.has(key)) seen.set(key, new Set(get(t, sc).map(x => norm(x.question))))
       const set = seen.get(key), n = norm(q.question)
       if (set.has(n)) { dupes++; continue }
       set.add(n)
-      rows.push({ question: String(q.question).trim(), option_a: String(q.option_a).trim(), option_b: String(q.option_b).trim(), option_c: String(q.option_c).trim(), option_d: String(q.option_d).trim(), answer: String(q.answer).toUpperCase(), explanation: q.explanation || '', topic: q.topic || '', difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : null, ...(q.passage ? { passage: String(q.passage) } : {}), series, test_no: t, section: sc, uploaded_by: currentUser?.name || '' })
+      rows.push({ question: String(q.question).trim(), option_a: String(q.option_a).trim(), option_b: String(q.option_b).trim(), option_c: String(q.option_c).trim(), option_d: String(q.option_d).trim(), answer: String(q.answer).toUpperCase(), explanation: q.explanation || '', topic: planTopic || q.topic || '', difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : null, ...(q.passage ? { passage: String(q.passage) } : {}), series, test_no: t, section: sc, uploaded_by: currentUser?.name || '' })
     }
-    if (!rows.length) return setMsg(`❌ Nothing imported — ${dupes} duplicate(s), ${denied} not allowed or not matching this series.`)
-    if (!window.confirm(`Import ${rows.length} question(s)?${dupes ? `\n${dupes} duplicate(s) will be skipped.` : ''}${denied ? `\n${denied} not allowed here will be skipped.` : ''}`)) return
+    if (!rows.length) return setMsg(`❌ Nothing imported — ${dupes} duplicate(s), ${denied} not allowed or not matching this series${offChap ? `, ${offChap} not on the planned chapter` : ''}.`)
+    if (!window.confirm(`Import ${rows.length} question(s)?${dupes ? `\n${dupes} duplicate(s) will be skipped.` : ''}${denied ? `\n${denied} not allowed here will be skipped.` : ''}${offChap ? `\n${offChap} not on the planned chapter of their test will be skipped.` : ''}`)) return
     setBusy(true)
     const { error } = await supabase.from(TABLE).insert(rows)
     setBusy(false)
     if (error) return setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages)' : ''))
-    audit('bank_import', series, { count: rows.length, dupes, denied, keep })
+    audit('bank_import', series, { count: rows.length, dupes, denied, off_chapter: offChap, keep })
     for (const key of seen.keys()) { const [t, sc] = key.split('|'); await clearSignoff(Number(t), sc) }
     setMsg(`✅ ${rows.length} question(s) imported${dupes ? ` · ${dupes} duplicate(s) skipped` : ''}`); load()
   }
@@ -560,6 +573,12 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     const tt = Number(moveTo.test || testNo), ss = moveTo.section || section
     if (!canEdit(tt, ss)) return setMsg('❌ Only the target section’s setter or an admin can add questions there.')
     if (tt === testNo && ss === section) return setMsg('❌ Choose a different test or section.')
+    if (strictPlan) {
+      const pl = chaptersOf(tt, ss)
+      if (planState(pl) === 'multi') return setMsg(`❌ ${tid(tt)} · ${ss} lists ${pl.length} chapters in the Syllabus Plan; keep just one first.`)
+      const off = offPlan(rowsSel, pl)
+      if (off.length) return setMsg(`❌ ${tid(tt)} · ${ss} is planned for “${pl[0]}”. ${off.length} of the selected question${off.length === 1 ? ' is' : 's are'} on a different chapter, so ${off.length === 1 ? 'it' : 'they'} cannot go there.`)
+    }
     if (!window.confirm(`${copy ? 'Copy' : 'Move'} ${rowsSel.length} question(s) to ${tid(tt)} · ${ss}?`)) return
     let error
     if (copy) ({ error } = await supabase.from(TABLE).insert(rowsSel.map(({ id, created_at, deleted_at, deleted_by, ...r }) => ({ ...r, test_no: tt, section: ss, uploaded_by: currentUser?.name || '' }))))  // eslint-disable-line no-unused-vars
@@ -602,6 +621,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const multiTeachers = contribs.length > 1
   const myName = currentUser?.name || ''
   const chapters = chaptersOf(testNo, sec.label)
+  const offList = strictPlan && chapters.length === 1 ? offPlan(secList, chapters) : []   // questions here that are not on the planned chapter
   const normT = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
   const chapterCount = ch => secList.filter(q => normT(q.topic) === normT(ch)).length
   const untagged = chapters.length ? secList.filter(q => !chapters.some(ch => normT(ch) === normT(q.topic))).length : 0
@@ -635,6 +655,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 .msb-meth em{position:absolute;top:10px;right:10px;font-style:normal;font-size:10px;font-weight:800;letter-spacing:.04em;padding:2px 8px;border-radius:99px;background:#fff3d6;color:#8a5500}
 .msb-how{display:flex;flex-wrap:wrap;gap:8px 18px;margin:0 0 14px;padding:10px 14px;border-radius:12px;background:#f6f8fc;border:1px dashed #cdd6e6;font-size:13px;color:#26354f;font-weight:600}
 .msb-how span{display:inline-flex;align-items:center;gap:8px}.msb-how i{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:#132a4f;color:#fff;font:800 12px/1 inherit;font-style:normal}
+.msb-off{font-size:11px;font-weight:800;padding:2px 8px;border-radius:99px;background:#fdecea;color:#b42318;border:1px solid #f5c2bd;white-space:nowrap}
 .msb-rule{display:flex;gap:11px;align-items:flex-start;margin:0 0 14px;padding:11px 14px;border-radius:12px;background:#f6f1ff;border:1px solid #d9ccf5;color:#2d1b69;font-size:13px;line-height:1.5}.msb-rule svg{flex:none;margin-top:2px;color:#6d28d9}.msb-rule.warn{background:#fff7e6;border-color:#f0d9a0;color:#6b4300}.msb-rule.warn svg{color:#b45309}
 .msb-more{margin-top:16px;border:1px solid #e3e8f1;border-radius:14px;background:#fbfcfe}.msb-more>summary{cursor:pointer;padding:13px 16px;font-weight:800;font-size:14px;color:#0e2a55;list-style:none}.msb-more>summary::-webkit-details-marker{display:none}
 .msb-more>summary::before{content:'▸';display:inline-block;margin-right:9px;transition:transform .2s;color:#8a6a1f}.msb-more[open]>summary::before{transform:rotate(90deg)}.msb-more>summary small{font-weight:500;color:#5d6b82}
@@ -782,7 +803,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16 }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}><MiniBar pct={health.score} tone={health.score >= 85 ? 'ok' : health.score >= 55 ? 'gold' : 'bad'} width={140} /><b style={{ fontSize: 13 }}>Paper health</b></div>
-            {health.checks.map(c => (
+            {[...health.checks, ...(strictPlan && chapters.length === 1 ? [{ id: 'plan', ok: offList.length === 0, text: offList.length ? `${offList.length} question${offList.length === 1 ? '' : 's'} not on the planned chapter “${chapters[0]}”` : `Every question is on the planned chapter (${chapters[0]})` }] : [])].map(c => (
               <div key={c.id} style={{ display: 'flex', gap: 8, fontSize: 13, padding: '4px 0', color: c.ok ? PX.ink : PX.warn }}>
                 <span style={{ width: 18 }}>{c.ok ? '✅' : '⚠️'}</span><span>{c.text}</span>
               </div>))}
@@ -900,6 +921,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                     : myCount < sec.q / 2 ? <>Good start. {sec.q - myCount} more to go — every question is saved the moment you add it.</>
                       : <>Over halfway. Just {sec.q - myCount} more.</>}</div>
             </div>)}
+            {strictPlan && planState(chapters) === 'multi' && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>The plan lists {chapters.length} chapters for {tid(testNo)} · {sec.short || section}.</b> Every teacher must set the one same chapter, so uploads are paused. An admin must keep just one in Mission Sainik → Syllabus.</span></div>}
+            {offList.length > 0 && <div className="msb-rule warn" role="alert"><Icon name="alert" size={18} /><span><b>{offList.length} question{offList.length === 1 ? ' is' : 's are'} not on the planned chapter “{chapters[0]}”.</b> They are marked <i>Off plan</i> below. Fix or delete {offList.length === 1 ? 'it' : 'them'}; the section cannot be verified until then.</span></div>}
             {strictPlan && (chapters.length ? (
               <div className="msb-rule" role="note"><Icon name="syllabus" size={18} /><span><b>The paper holds {sec.q} questions per section.</b> Only {chapters.length === 1 ? 'the planned chapter is' : 'the planned chapters are'} accepted. Extra questions are saved to the Practice bank ({section} · Set {practiceSetFor(section)}) under the same chapter.</span></div>
             ) : (
@@ -1056,6 +1079,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               {byVersion && flav.length > 0 && (() => { const f = flav.find(x => x.by === (String(q.uploaded_by || '').trim() || '(unknown)')); const idx = f ? f.items.findIndex(x => x.id === q.id) : -1; return f && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: idx < sec.q ? '#e8f0fe' : '#f1f3f7', color: idx < sec.q ? '#1d4ed8' : '#7b8799' }}>{idx < sec.q ? `Version ${f.letter} · Q${idx + 1}` : 'Extra'}</span> })()}
               {!byVersion && (secList.length > sec.q || pickInfo.chosen > 0) && <span style={{ fontSize: 11, fontWeight: 800, padding: '2px 8px', borderRadius: 99, whiteSpace: 'nowrap', background: usedIds.has(q.id) ? '#e6f5ec' : '#f1f3f7', color: usedIds.has(q.id) ? '#0f7a4c' : '#7b8799' }}>{usedIds.has(q.id) ? `In paper · Q${startOf(section) + usedList.findIndex(x => x.id === q.id)}` : 'Not used'}</span>}
               {isAdmin && !byVersion && (secList.length > sec.q || pickInfo.chosen > 0) && <button type="button" className="px-hbtn" onClick={() => toggleInPaper(q)} aria-pressed={!!q.in_paper} aria-label={q.in_paper ? 'Remove from the paper' : 'Use this question in the paper'} title={q.in_paper ? 'Chosen for the paper. Click to un-choose' : 'Choose this question for the paper'} style={{ color: q.in_paper ? '#b8923a' : undefined, fontSize: 16 }}>{q.in_paper ? '★' : '☆'}</button>}
+              {strictPlan && chapters.length === 1 && !matchChapter(chapters, q.topic) && <span className="msb-off" title={`Planned chapter: ${chapters[0]}`}>Off plan</span>}
               {q.difficulty && <span style={{ fontSize: 11, color: PX.sub }}>{q.difficulty}</span>}
               {<button className="px-hbtn" onClick={() => { setStudio(q.id); setOpen('') }} aria-label={mayEdit ? 'Edit question' : 'Open question'}>{mayEdit ? '✎' : '👁'}</button>}
               {mayEdit && <button className="px-hbtn" onClick={() => del(q)} aria-label="Delete question">🗑</button>}

@@ -43,3 +43,15 @@ test('no plan for this test: nothing is refused, the topic is kept as typed', ()
   const r = routePreMock({ list: [q(1, 'Anything')], chapters: [], room: 25 })
   assert.equal(r.paper[0].topic, 'Anything')
 })
+
+import { offPlan, planState } from '../src/lib/missionSainikPlanRule.js'
+
+test('planState: one chapter is ok, none is not planned, several is a problem', () => {
+  assert.equal(planState(PLAN), 'ok'); assert.equal(planState([]), 'none'); assert.equal(planState(['A', 'B']), 'multi')
+})
+
+test('offPlan lists untagged and other-chapter questions, and nothing when there is no plan', () => {
+  const list = [q(1, PLAN[0]), q(2, 'Fractions'), q(3, ''), q(4, '  natural numbers, prime and composite numbers, roman numerals')]
+  assert.deepEqual(offPlan(list, PLAN).map(x => x.question), ['Q2', 'Q3'])
+  assert.deepEqual(offPlan(list, []), [])
+})
