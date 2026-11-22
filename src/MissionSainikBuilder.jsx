@@ -65,7 +65,9 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const [qs, setQs] = useState([])
   const [setup, setSetup] = useState(false)
   const [testNo, setTestNo] = useState(() => startTest || (cfg.tests.find(t => t.date && today && t.date >= today)?.no ?? (today && cfg.tests.some(t => t.date) ? cfg.tests[cfg.tests.length - 1].no : 1)))   // opens on the present test: the next one not yet held
-  const [showAll, setShowAll] = useState(false)   // false: only the present test is listed; true: every test
+  const [showAll, setShowAll] = useState(false)
+  const [showNotes, setShowNotes] = useState(false)   // review notes stay folded unless there are open notes
+  const [lim, setLim] = useState({ k: '', n: 10 })   // questions listed before "Show more"   // false: only the present test is listed; true: every test
   const [sectionSel, setSection] = useState(startSection || cfg.sections[0].label)
   const [text, setText] = useState('')
   // The pasted text is kept on this device per test and section, so a reload (pull-down on a phone, a dropped connection) loses nothing
@@ -580,13 +582,14 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const flav = flavours(secList, sec.q)
   const myCount = byVersion ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
   const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
+  const limN = lim.k === `${testNo}|${section}|${qSearch}|${qLevel}` ? lim.n : 10
   const ready = testReady(testNo)
   const health = paperHealth(live(testNo).map(x => ({ label: x.label, q: x.q, items: get(testNo, x.label) })), qs, testNo)
   const lvl = { Easy: 0, Medium: 0, Hard: 0 }; secList.forEach(q => { if (lvl[q.difficulty] != null) lvl[q.difficulty]++ })
 
   const jump = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const stepTest = d => { const i = cfg.tests.findIndex(t => t.no === testNo); const n = cfg.tests[i + d]; if (n) setTestNo(n.no) }
-  const msbCss = `${MATH_CSS}.msb img.oi{max-height:70px}.msb .msb-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+  const msbCss = `${MATH_CSS}.msb .msb-q .px-hbtn{height:32px!important;min-height:32px!important;padding:0 10px!important}.msb .msb-q input[type=checkbox]{margin-top:6px!important}.msb img.oi{max-height:70px}.msb .msb-strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 8px;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
 .msb .msb-strip::-webkit-scrollbar{display:none}.msb .msb-chip{scroll-snap-align:center;flex:0 0 auto;min-width:92px;text-align:left;padding:9px 12px;border-radius:14px;border:2px solid #e8e3d8;background:#fff;cursor:pointer;font-family:inherit}
 .msb .msb-chip.on{border-color:#b8923a;background:#faf1d9}.msb .msb-fab{position:fixed;right:14px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:34;border:none;border-radius:16px;background:#b8923a;color:#fff;font:800 14px inherit;font-family:inherit;padding:14px 18px;box-shadow:0 10px 24px rgba(184,146,58,.5)}
 @media (max-width:640px){.msb input:not([type=checkbox]):not([type=file]),.msb select,.msb textarea{font-size:16px!important}.msb .px-hbtn,.msb .px-btn{min-height:42px}.msb .px-card{border-radius:16px}}`
@@ -595,7 +598,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     <div className="msb">
       <style>{msbCss}</style>
       {setup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261206_mission_sainik_questions.sql</b> in Supabase to enable the builders.</div>}
-      <PremiumCard title={`${cfg.name} ${cfg.noun === 'Set' ? '' : cfg.noun === 'Test' ? 'Builder' : 'Test Builder'}`.trim()} subtitle={`Assembles automatically as setters upload — ${cfg.noun === 'Set' ? '25 questions per subject set' : totalQ(1) + ' questions per test'}. Only a section's own setter (or an admin) can upload; everyone else can view and print.`}
+      <PremiumCard title={`${cfg.name} · ${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in — only a section's own setter (or an admin) can upload`}
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{(!embargo || isAdmin) && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}
         bodyStyle={{ padding: 0, overflowX: 'auto' }}>
         {isMobile && showAll && (
           <div className="msb-strip" data-ti-skip role="tablist" aria-label={cfg.noun === 'Set' ? 'Choose a set' : 'Choose a test'} style={{ padding: '12px 12px 4px' }}>
@@ -625,7 +629,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <span style={{ flex: '1 1 220px', fontSize: 13, color: PX.ink }}>⭐ <b>Yours:</b> {tid(nextMine.t)} · {nextMine.s.short} — {get(nextMine.t, nextMine.s.label).length}/{nextMine.s.q} questions in</span>
             <button type="button" className="px-btn gold" onClick={() => { setTestNo(nextMine.t); setSection(nextMine.s.label) }}>Continue →</button>
           </div>)}
-        {!isMobile && <table className="px-table" style={{ minWidth: 640 }}>
+        {!isMobile && showAll && <table className="px-table" style={{ minWidth: 640 }}>
           <thead><tr><th>{cfg.noun === 'Set' ? 'Set' : 'Test'}</th>{cfg.sections.map(s => <th key={s.label}>{s.short}</th>)}<th>Total</th><th /></tr></thead>
           <tbody>{cfg.tests.filter(t => showAll || t.no === testNo).map(t => (
             <tr key={t.no} style={t.no === testNo ? { background: PX.tint } : undefined}>
@@ -636,10 +640,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             </tr>))}
           </tbody>
         </table>}
-      </PremiumCard>
-
-      <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{(!embargo || isAdmin) && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
+        <div style={{ padding: isMobile ? '12px' : '14px 16px 16px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : `repeat(${live(testNo).length}, 1fr)`, gap: 8 }}>
           {live(testNo).map(s => {
             const n = get(testNo, s.label).length, st = secStatus(testNo, s)
@@ -655,11 +656,13 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             )
           })}
         </div>
+        </div>
       </PremiumCard>
 
-      {isMobile && !showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· health check, print, Word, OMR</span></span><span>▸</span></button>}
-      {(!isMobile || showTools) && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
-        right={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>{isAdmin && onLock && <button className="px-hbtn" onClick={() => onLock(`lock:${series}:${testNo}`, !isLocked(testNo))}>{isLocked(testNo) ? '🔓 Unlock paper' : '🔒 Lock paper'}</button>}<span className="px-hbtn" style={{ pointerEvents: 'none' }}>{health.score}% healthy</span></span>}>
+
+      {!showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· {health.score}% healthy{isMobile ? '' : ' · versions, preview, Word, OMR'}</span></span><span>▸</span></button>}
+      {showTools && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
+        right={<span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>{isAdmin && onLock && <button className="px-hbtn" onClick={() => onLock(`lock:${series}:${testNo}`, !isLocked(testNo))}>{isLocked(testNo) ? '🔓 Unlock paper' : '🔒 Lock paper'}</button>}<span className="px-hbtn" style={{ pointerEvents: 'none' }}>{health.score}% healthy</span><button className="px-hbtn" onClick={() => setShowTools(false)}>Hide</button></span>}>
         {isLocked(testNo) && <div role="status" style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0', color: '#5c4510', fontSize: 13, fontWeight: 600 }}>🔒 This paper is locked by an admin. It can be viewed and printed but not changed{isAdmin ? ' (you can, as an admin)' : ''}.</div>}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1.3fr 1fr', gap: 16 }}>
           <div>
@@ -859,7 +862,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>
       </div>
 
-      <PremiumCard title={`Review notes (${notesOf(testNo, section).length})`} subtitle={`${tid(testNo)} · ${section} — a verifier can ask for changes here; open notes block verification until they are resolved`}>
+      {!(showNotes || openNotes(testNo, section) > 0) ? <button type="button" className="px-btn ghost" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', margin: '0 0 14px', padding: '12px 16px', textAlign: 'left' }} onClick={() => setShowNotes(true)}><span><b>💬 Review notes ({notesOf(testNo, section).length})</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· ask a verifier for changes</span></span><span>▸</span></button> : <PremiumCard title={`Review notes (${notesOf(testNo, section).length})`} subtitle={`${tid(testNo)} · ${section} — a verifier can ask for changes here; open notes block verification until they are resolved`}>
+        {openNotes(testNo, section) === 0 && <div style={{ textAlign: 'right', marginBottom: 6 }}><button type="button" className="px-hbtn" onClick={() => setShowNotes(false)}>Hide</button></div>}
         {notesOf(testNo, section).length === 0 && <div style={{ fontSize: 13, color: PX.sub, marginBottom: 8 }}>No notes yet.</div>}
         {notesOf(testNo, section).map(r => (
           <div key={r.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderTop: `1px solid ${line}`, opacity: r.status === 'resolved' ? 0.65 : 1 }}>
@@ -875,7 +879,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           <input className="px-input" style={{ flex: '1 1 240px' }} value={newNote} onChange={e => setNewNote(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNote()} placeholder="e.g. Q7 has two correct answers; Q12 needs an explanation" aria-label="New review note" />
           <button className="px-btn gold" onClick={addNote}>Add note</button>
         </div>
-      </PremiumCard>
+      </PremiumCard>}
 
       <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see its options and answer' : ''}
         right={mayEdit && secList.length ? <button className="px-hbtn" onClick={() => setPicked(picked.length === secList.length ? [] : secList.map(q => q.id))}>{picked.length === secList.length ? 'Clear selection' : 'Select all'}</button> : null}>
@@ -895,8 +899,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             <button className="px-btn ghost" style={{ color: PX.bad }} onClick={deletePicked}>🗑 Delete</button>
           </div>)}
         {embargoed(testNo, section) ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>🔒 {secList.length} question(s) uploaded. The questions stay hidden from other staff until {fmtShort(dateOf(testNo))} (embargo).</div>
-          : !secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : listShown.map(({ q, i }) => (
-          <div key={q.id} style={{ borderTop: i ? `1px solid ${line}` : 'none', padding: isMobile ? '12px 0' : '8px 0' }}>
+          : !secList.length ? <div style={{ padding: 16, color: PX.sub, fontSize: 13 }}>Nothing uploaded yet.</div> : listShown.slice(0, limN).map(({ q, i }) => (
+          <div key={q.id} className="msb-q" style={{ borderTop: i ? `1px solid ${line}` : 'none', padding: isMobile ? '12px 0' : '8px 0' }}>
             <div style={{ display: 'flex', gap: 8, alignItems: isMobile ? 'center' : 'flex-start', flexWrap: isMobile ? 'wrap' : 'nowrap' }}>
               {mayEdit && <input type="checkbox" aria-label={`Select question ${i + 1}`} checked={picked.includes(q.id)} onChange={() => toggle(q.id)} style={{ marginTop: 4 }} />}
               <button style={{ all: 'unset', cursor: 'pointer', flex: isMobile ? '1 1 calc(100% - 36px)' : 1, fontSize: isMobile ? 14.5 : 13.5, lineHeight: 1.45 }} onClick={() => setOpen(open === q.id ? '' : q.id)}><b>Q{startOf(section) + i}.</b> {q.passage ? <span title="Has a reading passage">📖 </span> : null}{q.image_data ? <span title="Has a figure">🖼 </span> : null}<span dangerouslySetInnerHTML={{ __html: mathToHtml(q.question) }} /></button>
@@ -950,15 +954,16 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             )}
           </div>
         ))}
+        {listShown.length > limN && <div style={{ textAlign: 'center', paddingTop: 10, borderTop: `1px solid ${line}` }}><button type="button" className="px-btn ghost" onClick={() => setLim({ k: `${testNo}|${section}|${qSearch}|${qLevel}`, n: limN + 15 })}>Show {Math.min(15, listShown.length - limN)} more · {limN} of {listShown.length} shown</button></div>}
       </PremiumCard>
-      <PremiumCard title={`Recycle bin (${bin.length})`} subtitle="Deleted questions can be restored by the setter or an admin" right={<button className="px-hbtn" onClick={() => setShowBin(v => !v)}>{showBin ? 'Hide' : 'Show'}</button>}>
+      {bin.length > 0 && (!showBin ? <button type="button" className="px-btn ghost" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', margin: '0 0 14px', padding: '12px 16px', textAlign: 'left' }} onClick={() => setShowBin(true)}><span><b>🗑 Recycle bin ({bin.length})</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· restore deleted questions</span></span><span>▸</span></button> : <PremiumCard title={`Recycle bin (${bin.length})`} subtitle="Deleted questions can be restored by the setter or an admin" right={<button className="px-hbtn" onClick={() => setShowBin(v => !v)}>{showBin ? 'Hide' : 'Show'}</button>}>
         {showBin && (!bin.length ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Empty.</div> : bin.slice(0, 100).map(q => (
           <div key={q.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${line}`, fontSize: 13 }}>
             <span style={{ flex: 1 }}>{embargoed(q.test_no, q.section) ? '(hidden until test date)' : q.question.slice(0, 90)} <span style={{ color: PX.sub, fontSize: 11 }}>· {tid(q.test_no)} · {q.section} · deleted by {q.deleted_by || '?'}</span></span>
             {(isAdmin || canEdit(q.test_no, q.section)) && <button className="px-hbtn" onClick={() => restore(q)}>↩ Restore</button>}
             {isAdmin && <button className="px-hbtn" onClick={() => purge(q)} aria-label="Delete forever">✖</button>}
           </div>)))}
-      </PremiumCard>
+      </PremiumCard>)}
       {preview && (
         <div className="msx-overlay" onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
           <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Paper preview" onClick={e => e.stopPropagation()} style={{ width: 'min(900px,100%)', height: '88vh', background: '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>

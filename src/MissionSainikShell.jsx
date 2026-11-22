@@ -488,7 +488,7 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
 
       <div className="msx-body">
         <main id="msx-main" tabIndex={-1} className={'msx-main' + (fab ? ' has-fab' : '')} key={active} style={{ outline: 'none' }}>
-          {active !== 'overview' && (
+          {active !== 'overview' && !['prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder'].includes(active) && (
             <div className="msx-ph">
               <div className="kick">{cur?.group || 'Mission Sainik'}</div>
               <h2>{cur?.label || title}</h2>
