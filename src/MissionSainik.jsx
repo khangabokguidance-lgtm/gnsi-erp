@@ -87,7 +87,7 @@ function useIsMobile() {
 // Several chapters in one syllabus cell. Stored as a single "A; B; C" string (no schema change);
 // shown as removable chips with an input that adds another chapter.
 const splitChapters = v => String(v || '').split(';').map(s => s.trim()).filter(Boolean)
-function ChapterMulti({ value, onSave, listId, label, placeholder, fontSize, minHeight, tint }) {
+function ChapterMulti({ value, onSave, listId, label, placeholder, fontSize, minHeight, tint, readOnly = false }) {
   const items = splitChapters(value)
   const [draft, setDraft] = useState('')
   const commit = text => {
@@ -96,6 +96,12 @@ function ChapterMulti({ value, onSave, listId, label, placeholder, fontSize, min
     onSave([...items, t].join('; '))
   }
   const remove = i => onSave(items.filter((_, j) => j !== i).join('; '))
+  if (readOnly) {   // only an admin changes the plan: everyone else just reads it
+    return (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }} aria-label={label}>
+        {items.length ? items.map(c => <span key={c} style={{ padding: '2px 8px', borderRadius: 99, background: tint || '#f1ede3', fontSize: Math.max(11, (fontSize || 13) - 1), fontWeight: 600 }}>{c}</span>) : <span style={{ fontSize: fontSize || 13, color: PX.faint }}>Not planned yet</span>}
+      </div>)
+  }
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
       {items.map((c, i) => (
@@ -415,6 +421,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   }, [])
   useEffect(() => { loadExtra() }, [loadExtra])
   const saveChapter = async (test_no, subject, chapter) => {
+    if (!isRealAdmin) return setMsg('Only an admin can change the syllabus plan.')   // every other rule follows this plan
     if ((syl[test_no + '|' + subject] || '') === chapter) return
     setSyl(m => ({ ...m, [test_no + '|' + subject]: chapter }))
     const { error } = await supabase.from(SYL_TABLE).upsert({ test_no, subject, chapter, updated_by: currentUser?.name || '', updated_at: new Date().toISOString() }, { onConflict: 'test_no,subject' })
@@ -1413,6 +1420,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   }
   const exportSyllabusLong = () => downloadCsv('Mission_Sainik_syllabus_import_template.csv', [['Test', 'Subject', 'Chapter']].concat(TESTS.flatMap(t => SUBJECTS.map(x => [t.no, x.short, syl[t.no + '|' + x.label] || '']))))
   const runSylImport = async () => {
+    if (!isRealAdmin) return setMsg('Only an admin can change the syllabus plan.')
     const { rows: list, errors } = parseSyllabusText(sylImport, SUBJECTS)
     if (errors.length) return setMsg('❌ ' + errors.slice(0, 3).join(' · '))
     if (!list.length) return setMsg('❌ Nothing to import.')
@@ -1455,7 +1463,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
   const syllabusTab = (
     <>{setupNote}
       <PremiumCard title="Syllabus plan" subtitle="Chapter for each section of each test — type or pick a suggested chapter, then press Enter or click away to save. Setters see it on their task." bodyStyle={{ padding: 0, overflowX: 'auto' }}
-        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isRealAdmin && <button className="px-hbtn" onClick={loadPlan2026} title="Fill the 120 chapters from the Mission Sainik syllabus plan 2026-27 document">📘 Load plan 2026-27</button>}{isRealAdmin && <button className="px-hbtn" onClick={suggestPlan}>✨ Suggest plan</button>}<button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button><button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button><button className="px-hbtn" onClick={printSyllabusPlan}>🖨 Print</button><button className="px-hbtn" onClick={planDocx}>📝 Word</button></span>}>
+        right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{isRealAdmin && <button className="px-hbtn" onClick={loadPlan2026} title="Fill the 120 chapters from the Mission Sainik syllabus plan 2026-27 document">📘 Load plan 2026-27</button>}{isRealAdmin && <button className="px-hbtn" onClick={suggestPlan}>✨ Suggest plan</button>}{isRealAdmin && <button className="px-hbtn" onClick={() => setSylImport(sylImport === null ? '' : null)}>⬆ Import</button>}<button className="px-hbtn" onClick={exportSyllabus}>⬇ CSV</button><button className="px-hbtn" onClick={printSyllabusPlan}>🖨 Print</button><button className="px-hbtn" onClick={planDocx}>📝 Word</button></span>}>
         {sylImport !== null && (
           <div style={{ padding: 16, borderBottom: `1px solid ${PX.line}` }}>
             <div style={{ fontSize: 13, color: PX.sub, marginBottom: 6 }}>Paste lines as <b>test, subject, chapter</b> (comma or tab; subject can be Maths, Reasoning, Science, GK, Grammar or Vocab). A spreadsheet paste works. <button className="px-btn ghost" style={{ marginLeft: 6 }} onClick={exportSyllabusLong}>Download template</button></div>
@@ -1527,7 +1535,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
                       <div key={t.no} style={{ border: `1px solid ${done ? '#bfe3cc' : PX.line}`, borderRadius: 16, background: done ? '#f7fcf9' : '#fff', overflow: 'hidden' }}>
                         <div onClick={isMobile ? () => setSylOpen(o => ({ ...o, [t.no]: !open })) : undefined} role={isMobile ? 'button' : undefined} aria-expanded={isMobile ? open : undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '13px 14px' : '11px 14px', borderBottom: open ? `1px solid ${PX.line}` : 'none', cursor: isMobile ? 'pointer' : 'default' }}>
                           <div style={{ flex: 1 }}><div style={{ fontFamily: PX.serif, fontSize: 16, fontWeight: 600, color: PX.navy }}>{t.id}</div><div style={{ fontSize: 11.5, color: PX.sub }}>{fmtShort(t.date)}</div></div>
-                          {prevHas && open && <button type="button" className="px-btn ghost" style={{ padding: isMobile ? '8px 12px' : '4px 9px', fontSize: isMobile ? 12.5 : 11.5 }} onClick={e => { e.stopPropagation(); copyPrev(t) }} title="Fill empty boxes from the previous test">↧ Copy prev</button>}
+                          {isRealAdmin && prevHas && open && <button type="button" className="px-btn ghost" style={{ padding: isMobile ? '8px 12px' : '4px 9px', fontSize: isMobile ? 12.5 : 11.5 }} onClick={e => { e.stopPropagation(); copyPrev(t) }} title="Fill empty boxes from the previous test">↧ Copy prev</button>}
                           <span style={{ padding: '3px 9px', borderRadius: 99, fontSize: 11, fontWeight: 800, background: done ? '#dcfce7' : n ? PX.goldBg : '#f1ede3', color: done ? '#15803d' : '#8a6118' }}>{done ? '✓ Done' : `${n}/${SUBJECTS.length}`}</span>
                           {isMobile && <span aria-hidden="true" style={{ color: PX.sub, fontSize: 12, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}>▾</span>}
                         </div>
@@ -1535,7 +1543,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
                           {SUBJECTS.map((x, i) => (
                             <label key={x.key} style={{ display: 'block', borderLeft: `4px solid ${tone(i)}`, borderRadius: 8, background: val(t, x) ? tone(i) + '12' : '#fafafa', padding: isMobile ? '8px 12px 9px' : '5px 8px 6px' }}>
                               <span style={{ display: 'block', fontSize: 10, fontWeight: 800, letterSpacing: '.09em', textTransform: 'uppercase', color: tone(i) }}>{x.short}</span>
-                              <ChapterMulti value={val(t, x)} onSave={v => saveChapter(t.no, x.label, v)} listId={'syl-sug-' + x.key} label={`${t.id} ${x.short} chapter`} placeholder="Add chapter…" fontSize={isMobile ? 16 : 13} minHeight={isMobile ? 40 : undefined} tint={tone(i) + '22'} />
+                              <ChapterMulti readOnly={!isRealAdmin} value={val(t, x)} onSave={v => saveChapter(t.no, x.label, v)} listId={'syl-sug-' + x.key} label={`${t.id} ${x.short} chapter`} placeholder="Add chapter…" fontSize={isMobile ? 16 : 13} minHeight={isMobile ? 40 : undefined} tint={tone(i) + '22'} />
                             </label>
                           ))}
                         </div>}
@@ -1551,7 +1559,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
                       <td>{t.id}<div style={{ fontWeight: 500, color: PX.sub, fontSize: 11 }}>{fmtShort(t.date)}</div></td>
                       {SUBJECTS.map(x => (
                         <td key={x.key} style={{ padding: '8px 10px' }}>
-                          <ChapterMulti value={val(t, x)} onSave={v => saveChapter(t.no, x.label, v)} listId={'syl-sug-' + x.key} label={`${t.id} ${x.short} chapter`} placeholder="Chapter" fontSize={12} />
+                          <ChapterMulti readOnly={!isRealAdmin} value={val(t, x)} onSave={v => saveChapter(t.no, x.label, v)} listId={'syl-sug-' + x.key} label={`${t.id} ${x.short} chapter`} placeholder="Chapter" fontSize={12} />
                         </td>
                       ))}
                     </tr>))}

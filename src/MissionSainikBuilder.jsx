@@ -30,6 +30,9 @@ const fmtShort = iso => new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', 
 // Which panel subjects may upload each Mega Mock section.
 const MEGA_PANEL = { Mathematics: ['maths'], Intelligence: ['reasoning'], 'Grammar + Vocabulary': ['grammar', 'vocab'], 'Science + GK': ['science', 'gk'] }
 
+const normQ = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
+// The first word of a name that is not a title ("Sir Kabiraj Singh" -> "Kabiraj"), so that every teacher's "Sir" does not match every other teacher's.
+const realFirst = n => String(n || '').split(/\s+/).find(w => w && !/^(sir|miss|mr|mrs|ms|dr)\.?$/i.test(w)) || ''
 const SUBJ_HUE = { maths: '#1d4f91', reasoning: '#6d28d9', science: '#0f7a4c', gk: '#c2410c', grammar: '#be185d', vocab: '#0e7490' }
 const SUBJ = Object.fromEntries(SUBJECTS.map(x => [x.key, x]))
 const DAILY_SECTIONS = [['maths', 20, 3], ['reasoning', 10, 2], ['grammar', 10, 2], ['gk', 10, 2]]
@@ -208,7 +211,9 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     const list = get(t, s); if (!list.length) return false
     if (isAdmin) return true
     if (openNotes(t, s) > 0) return false                     // unresolved review notes block verification
-    const mine = list.every(q => nameMatches(q.uploaded_by, (currentUser?.matchName || currentUser?.name)?.split(/\s+/)[0]) || q.uploaded_by === currentUser?.name)
+    const byMe = q => nameMatches(q.uploaded_by, realFirst(currentUser?.matchName || currentUser?.name)) || q.uploaded_by === currentUser?.name
+    // Pre Mock and Practice: nobody who wrote any of the section may verify it. Elsewhere it is enough that the section is not ALL their own.
+    const mine = chapterRule ? list.some(byMe) : list.every(byMe)
     return verifiersOf(t, s).some(isMe) && !mine
   }
   const clearSignoff = async (t, s) => { if (signoff(t, s)) { await supabase.from('mission_sainik_signoffs').delete().eq('series', series).eq('test_no', t).eq('section', s); setSignoffs(a => a.filter(x => !(x.test_no === t && x.section === s))) } }
@@ -243,6 +248,14 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     }
     return '❌ Only the section setter or an admin can upload here.'
   }
+  // Pre Mock <-> Practice of the SAME test and section: a practice set that repeats the paper would give the paper away.
+  const otherSeriesTexts = async (t, sc) => {
+    const other = series === 'pre' ? 'practice' : series === 'practice' ? 'pre' : null
+    if (!other) return new Set()
+    const { data } = await supabase.from(TABLE).select('question').eq('series', other).eq('test_no', t).eq('section', sc).is('deleted_at', null)
+    return new Set((data || []).map(x => normQ(x.question)))
+  }
+  const otherName = series === 'pre' ? 'practice set' : 'Pre Mock paper'
   const insertQuestions = async (list, { clear = false } = {}) => {
     if (!canUpload(testNo, section)) { setMsg(uploadDeniedMsg(testNo, section)); return false }
     const ownOf = l => (byVersion ? l.filter(x => x.uploaded_by === (currentUser?.name || '')) : l)   // several sets: each teacher's own set
@@ -252,6 +265,10 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     const seen = new Set(ownOf(get(testNo, section)).map(q => norm(q.question)))
     const dupes = list.filter((q, i) => seen.has(norm(q.question)) || list.findIndex(z => norm(z.question) === norm(q.question)) !== i)
     if (dupes.length) { setMsg(`❌ ${dupes.length} duplicate question(s) already in this section, e.g. “${dupes[0].question.slice(0, 50)}”.${list.length > 1 ? ' Remove them and upload again.' : ''}`); return false }
+    if (chapterRule) {
+      const other = await otherSeriesTexts(testNo, section), clash = list.filter(q => other.has(normQ(q.question)))
+      if (clash.length) { setMsg(`❌ ${clash.length} question${clash.length === 1 ? ' is' : 's are'} already in the ${otherName} for ${tid(testNo)} · ${section}, e.g. “${clash[0].question.slice(0, 50)}”. The practice set must not repeat the paper.`); return false }
+    }
     const chs = chaptersOf(testNo, section), defTopic = chs.includes(chapterPick) ? chapterPick : chs.length === 1 ? chs[0] : ''   // a question without a topic gets the planned chapter
     let paperList = list.map(q => ({ ...q, topic: q.topic || defTopic || q.topic })), extra = []
     if (chapterRule && planState(chs) === 'multi') { setMsg(`❌ ${tid(testNo)} · ${section} has ${chs.length} chapters in the Syllabus Plan. Every teacher must set the one same chapter, so an admin must keep just one (Mission Sainik → Syllabus).`); return false }
@@ -359,7 +376,12 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     await clearSignoff(q.test_no, q.section); setMsg('✅ Question saved (verification reset)'); await load(); return true
   }
   const restore = async q => {
-    if (!(isAdmin || canEdit(q.test_no, q.section))) return
+    if (!canModify(q)) return setMsg('❌ Only the teacher who set this question (or an admin) can restore it.')
+    if (strictPlan) {   // Pre Mock: a restored question counts toward the 25 again
+      const cap = cfg.sections.find(x => x.label === q.section)?.q || 25
+      const live = get(q.test_no, q.section).filter(x => !byVersion || x.uploaded_by === q.uploaded_by).length
+      if (live >= cap) return setMsg(`❌ ${tid(q.test_no)} · ${q.section} already holds ${cap}. Delete another question first, or leave this one in the bin.`)
+    }
     const { error } = await supabase.from(TABLE).update({ deleted_at: null, deleted_by: null }).eq('id', q.id)
     if (error) return setMsg('❌ ' + error.message)
     audit('restore_question', `${series}:${q.test_no}:${q.section}`, { id: q.id }); clearSignoff(q.test_no, q.section); load()
@@ -578,7 +600,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
     const places = new Set(list.map(q => `${q.test_no}|${q.section}`))
     const keep = places.size > 1 && window.confirm(`The file has ${list.length} questions from ${places.size} places.\n\nOK = keep their original test and section.\nCancel = add all of them to ${tid(testNo)} · ${section}.`)
     const norm = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim()
-    const seen = new Map(), rows = []; let dupes = 0, denied = 0, offChap = 0
+    const seen = new Map(), others = new Map(), added = {}, rows = [], extraRows = []; let dupes = 0, denied = 0, offChap = 0
     for (const q of list) {
       const t = keep ? Number(q.test_no) : testNo, sc = keep ? q.section : section
       if (!cfg.tests.some(x => x.no === t) || !cfg.sections.some(x => x.label === sc)) { denied++; continue }
@@ -593,16 +615,21 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       if (!seen.has(key)) seen.set(key, new Set(get(t, sc).map(x => norm(x.question))))
       const set = seen.get(key), n = norm(q.question)
       if (set.has(n)) { dupes++; continue }
+      if (chapterRule) { if (!others.has(key)) others.set(key, await otherSeriesTexts(t, sc)); if (others.get(key).has(n)) { dupes++; continue } }
       set.add(n)
-      rows.push({ question: String(q.question).trim(), option_a: String(q.option_a).trim(), option_b: String(q.option_b).trim(), option_c: String(q.option_c).trim(), option_d: String(q.option_d).trim(), answer: String(q.answer).toUpperCase(), explanation: q.explanation || '', topic: planTopic || q.topic || '', difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : null, ...(q.passage ? { passage: String(q.passage) } : {}), series, test_no: t, section: sc, uploaded_by: currentUser?.name || '' })
+      const row = { question: String(q.question).trim(), option_a: String(q.option_a).trim(), option_b: String(q.option_b).trim(), option_c: String(q.option_c).trim(), option_d: String(q.option_d).trim(), answer: String(q.answer).toUpperCase(), explanation: q.explanation || '', topic: planTopic || q.topic || '', difficulty: ['Easy', 'Medium', 'Hard'].includes(q.difficulty) ? q.difficulty : null, ...(q.passage ? { passage: String(q.passage) } : {}), series, test_no: t, section: sc, uploaded_by: currentUser?.name || '' }
+      const capHere = cfg.sections.find(x => x.label === sc)?.q || 25
+      const haveHere = (byVersion ? get(t, sc).filter(x => x.uploaded_by === (currentUser?.name || '')) : get(t, sc)).length + (added[key] || 0)
+      if (strictPlan && haveHere >= capHere) extraRows.push({ ...row, series: 'practice' })   // the paper is full: it goes to that test's practice set
+      else { rows.push(row); added[key] = (added[key] || 0) + 1 }
     }
-    if (!rows.length) return setMsg(`❌ Nothing imported — ${dupes} duplicate(s), ${denied} not allowed or not matching this series${offChap ? `, ${offChap} not on the planned chapter` : ''}.`)
-    if (!window.confirm(`Import ${rows.length} question(s)?${dupes ? `\n${dupes} duplicate(s) will be skipped.` : ''}${denied ? `\n${denied} not allowed here will be skipped.` : ''}${offChap ? `\n${offChap} not on the planned chapter of their test will be skipped.` : ''}`)) return
+    if (!rows.length && !extraRows.length) return setMsg(`❌ Nothing imported — ${dupes} duplicate(s), ${denied} not allowed or not matching this series${offChap ? `, ${offChap} not on the planned chapter` : ''}.`)
+    if (!window.confirm(`Import ${rows.length} question(s)?${extraRows.length ? `\n${extraRows.length} more do not fit (the paper holds only ${25} per section) and go to the practice set of their test.` : ''}${dupes ? `\n${dupes} duplicate(s) will be skipped.` : ''}${denied ? `\n${denied} not allowed here will be skipped.` : ''}${offChap ? `\n${offChap} not on the planned chapter of their test will be skipped.` : ''}`)) return
     setBusy(true)
-    const { error } = await supabase.from(TABLE).insert(rows)
+    const { error } = await supabase.from(TABLE).insert([...rows, ...extraRows])
     setBusy(false)
     if (error) return setMsg('❌ ' + error.message + (/passage|image_data/.test(error.message) ? ' (run migration 20261211 for passages)' : ''))
-    audit('bank_import', series, { count: rows.length, dupes, denied, off_chapter: offChap, keep })
+    audit('bank_import', series, { count: rows.length, to_practice: extraRows.length, dupes, denied, off_chapter: offChap, keep })
     for (const key of seen.keys()) { const [t, sc] = key.split('|'); await clearSignoff(Number(t), sc) }
     setMsg(`✅ ${rows.length} question(s) imported${dupes ? ` · ${dupes} duplicate(s) skipped` : ''}`); load()
   }
@@ -619,6 +646,15 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       if (planState(pl) === 'multi') return setMsg(`❌ ${tid(tt)} · ${ss} lists ${pl.length} chapters in the Syllabus Plan; keep just one first.`)
       const off = offPlan(rowsSel, pl)
       if (off.length) return setMsg(`❌ ${tid(tt)} · ${ss} is planned for “${pl[0]}”. ${off.length} of the selected question${off.length === 1 ? ' is' : 's are'} on a different chapter, so ${off.length === 1 ? 'it' : 'they'} cannot go there.`)
+    }
+    if (strictPlan) {   // Pre Mock: the target section holds 25 (per teacher while several sets are on)
+      const cap = cfg.sections.find(x => x.label === ss)?.q || 25
+      const have = (byVersion ? get(tt, ss).filter(x => x.uploaded_by === (currentUser?.name || '')) : get(tt, ss)).length
+      if (have + rowsSel.length > cap) return setMsg(`❌ ${tid(tt)} · ${ss} holds ${cap} and already has ${have}. It has room for ${Math.max(0, cap - have)} more.`)
+    }
+    if (chapterRule) {
+      const other = await otherSeriesTexts(tt, ss), clash = rowsSel.filter(q => other.has(normQ(q.question)))
+      if (clash.length) return setMsg(`❌ ${clash.length} of these ${clash.length === 1 ? 'is' : 'are'} already in the ${otherName} for ${tid(tt)} · ${ss}.`)
     }
     if (!window.confirm(`${copy ? 'Copy' : 'Move'} ${rowsSel.length} question(s) to ${tid(tt)} · ${ss}?`)) return
     let error
@@ -1209,7 +1245,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         {showBin && (bin === null ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Loading…</div> : !bin.length ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Empty.</div> : bin.slice(0, 100).map(q => (
           <div key={q.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderTop: `1px solid ${line}`, fontSize: 13 }}>
             <span style={{ flex: 1 }}>{embargoed(q.test_no, q.section) ? '(hidden until test date)' : q.question.slice(0, 90)} <span style={{ color: PX.sub, fontSize: 11 }}>· {tid(q.test_no)} · {q.section} · deleted by {q.deleted_by || '?'}</span></span>
-            {(isAdmin || canEdit(q.test_no, q.section)) && <button className="px-hbtn" onClick={() => restore(q)}>↩ Restore</button>}
+            {canModify(q) && <button className="px-hbtn" onClick={() => restore(q)}>↩ Restore</button>}
             {isAdmin && <button className="px-hbtn" onClick={() => purge(q)} aria-label="Delete forever">✖</button>}
           </div>)))}
       </PremiumCard>)}

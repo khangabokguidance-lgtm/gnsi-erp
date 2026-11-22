@@ -1,10 +1,11 @@
 -- Mission Sainik 2027 — keep the Pre Mock / Practice upload rules in the DATABASE as well as in the app.
--- Run after 20261203 (syllabus), 20261209 (settings) and 20261214. Safe to run more than once.
+-- Run after 20261203 (syllabus), 20261209 (settings) and 20261214; needs public.qbank_is_admin() from 20260925. Safe to run more than once.
 --
 -- The rules (the app already applies them; this stops anyone who calls the database API directly):
 --   1. Pre Mock and Practice questions must be on the chapter that the Syllabus Plan gives that test and section.
 --      Exactly ONE chapter per test and section: a plan cell listing several chapters (a;b) blocks uploads until it is fixed.
 --   2. Pre Mock holds 25 questions per section (per teacher while "multiple sets" is on). Extras belong in the Practice bank.
+--   3. The Syllabus Plan itself can be changed by admins only. Every rule above follows the plan, so whoever can edit the plan controls them.
 --
 -- OFF until an admin switches it on: Mission Sainik → Admin → "Enforce the syllabus plan and the 25 limit in the database".
 -- (That saves the setting enforce_plan = 'on'.) Check the list below first, because switching it on does not change existing rows.
@@ -63,3 +64,19 @@ end $$;
 drop trigger if exists mission_sainik_questions_enforce_plan on public.mission_sainik_questions;
 create trigger mission_sainik_questions_enforce_plan before insert or update on public.mission_sainik_questions
   for each row execute function public.mission_sainik_enforce_plan();
+
+-- Rule 3: with enforcement on, only admins may add, change or remove plan rows (staff could otherwise rewrite the plan and then upload "on plan").
+create or replace function public.mission_sainik_guard_plan()
+returns trigger language plpgsql as $$
+begin
+  if auth.uid() is not null
+     and exists (select 1 from public.mission_sainik_settings where key = 'enforce_plan' and value = 'on')
+     and not public.qbank_is_admin() then
+    raise exception 'Only an admin can change the Syllabus Plan.' using errcode = '42501';
+  end if;
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
+end $$;
+drop trigger if exists mission_sainik_syllabus_guard_plan on public.mission_sainik_syllabus;
+create trigger mission_sainik_syllabus_guard_plan before insert or update or delete on public.mission_sainik_syllabus
+  for each row execute function public.mission_sainik_guard_plan();
