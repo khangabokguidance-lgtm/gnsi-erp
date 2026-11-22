@@ -583,6 +583,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const flav = flavours(secList, sec.q)
   const secHue = SUBJ_HUE[sec.key] || Object.values(SUBJ_HUE)[Math.max(0, cfg.sections.indexOf(sec)) % 6]
   const myCount = byVersion ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
+  const overview = byVersion && myCount === 0 && secList.length > 0 && !settersOf(testNo, section).some(isMe)   // an admin / verifier looking at other teachers' sets, not a setter with a set of their own
   const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
   const limN = lim.k === `${testNo}|${section}|${qSearch}|${qLevel}` ? lim.n : 10
   const ready = testReady(testNo)
@@ -591,7 +592,9 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 
   const jump = id => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   const stepTest = d => { const i = cfg.tests.findIndex(t => t.no === testNo); const n = cfg.tests[i + d]; if (n) setTestNo(n.no) }
-  const msbCss = `${MATH_CSS}.msb-prog{margin:0 0 16px;padding:16px 18px;border-radius:16px;border:1px solid color-mix(in srgb,var(--c) 28%,#fff);background:linear-gradient(135deg,color-mix(in srgb,var(--c) 9%,#fff),#fff 70%)}
+  const msbCss = `${MATH_CSS}.msb-prog .chipsrow{display:flex;flex-wrap:wrap;gap:7px}.msb-prog .chipsrow span{display:inline-flex;align-items:center;gap:7px;padding:4px 12px 4px 5px;border-radius:99px;background:#fff;border:1px solid #f1c9c4;font-size:12.5px;font-weight:700;color:#8a3a2f}
+.msb-prog .chipsrow span.ok{border-color:#bfe3cc;color:#0f7a4c}.msb-prog .chipsrow i{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--c);color:#fff;font:800 11px/1 inherit;font-style:normal}
+.msb-prog{margin:0 0 16px;padding:16px 18px;border-radius:16px;border:1px solid color-mix(in srgb,var(--c) 28%,#fff);background:linear-gradient(135deg,color-mix(in srgb,var(--c) 9%,#fff),#fff 70%)}
 .msb-prog .hd{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}.msb-prog .ttl{font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--c)}
 .msb-prog .cnt{white-space:nowrap;font-size:14px;color:#5d6b82;font-weight:700}.msb-prog .cnt b{font-family:'Fraunces',Georgia,serif;font-size:28px;color:var(--c);margin-right:2px}
 .msb-prog .dots{display:flex;flex-wrap:wrap;gap:5px}.msb-prog .dots i{width:14px;height:14px;border-radius:50%;background:#e3e8f1;transition:background .3s,transform .3s}
@@ -848,10 +851,19 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       </PremiumCard>}
 
       <div id="msb-editor" style={{ scrollMarginTop: 140 }}>
-      <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${byVersion && flav.length > 1 ? `${flav.length} teachers · yours ${myCount}/${sec.q}` : `${secList.length}/${sec.q} questions`} · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
+      <PremiumCard title={`${section} · ${range(sec)}`} subtitle={`${byVersion && flav.length > 1 ? `${flav.length} teachers · yours ${myCount}/${sec.q}` : (secList.length > sec.q ? `${secList.length} uploaded · ${sec.q} needed` : `${secList.length}/${sec.q} questions`)} · Easy ${lvl.Easy} · Medium ${lvl.Medium} · Hard ${lvl.Hard} (aim ≈ 40/40/20)`}
         right={<span style={{ display: 'flex', gap: 8 }}>{(byVersion ? flavourStatus(secList, sec.q) === 'ok' : secList.length >= sec.q) && !signoff(testNo, section) && canVerify(testNo, section) && <button className="px-hbtn" onClick={() => verify(testNo, section)}>✓ Mark verified</button>}{mayEdit && secList.length ? <button className="px-hbtn" onClick={clearSection}>🗑 Clear section</button> : null}</span>}>
         {mayEdit ? (
           <>
+            {overview ? (
+              <div className="msb-prog" style={{ '--c': secHue }}>
+                <div className="hd"><span className="ttl">{sec.short || section} · section overview</span><span className="cnt"><b>{secList.length}</b> uploaded · {sec.q} needed</span></div>
+                <div className="chipsrow">{flav.map(f => <span key={f.by} className={f.complete ? 'ok' : 'part'}><i>{f.letter}</i>{fullName(f.by)} · {Math.min(f.count, sec.q)}/{sec.q}{f.complete ? <Icon name="check" size={12} stroke={3} /> : null}</span>)}</div>
+                <div className="msg">{signoff(testNo, section) ? <><Icon name="check" size={15} stroke={2.6} />Verified — this section is locked in.</>
+                  : flav.length && flav.every(f => f.complete) ? <><Icon name="check" size={15} stroke={2.6} />{flav.length === 1 ? 'The set is complete' : `All ${flav.length} sets are complete`} — ready for verification. You can still add questions below.</>
+                    : <>{flav.filter(f => f.complete).length} of {flav.length} set{flav.length === 1 ? '' : 's'} complete. You can add questions below, or wait for the setters.</>}</div>
+              </div>
+            ) : (
             <div className="msb-prog" style={{ '--c': secHue }}>
               <div className="hd"><span className="ttl">Your progress in {sec.short || section}</span><span className="cnt"><b>{Math.min(myCount, sec.q)}</b> of {sec.q}</span></div>
               {sec.q <= 60 ? <div className="dots" role="img" aria-label={`${Math.min(myCount, sec.q)} of ${sec.q} questions added`}>{Array.from({ length: sec.q }, (_, i) => <i key={i} className={i < myCount ? 'on' : i === myCount ? 'next' : ''} />)}</div>
@@ -861,7 +873,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                   : myCount === 0 ? <>Let's begin. Choose how you want to add questions below — your first one takes about a minute.</>
                     : myCount < sec.q / 2 ? <>Good start. {sec.q - myCount} more to go — every question is saved the moment you add it.</>
                       : <>Over halfway. Just {sec.q - myCount} more.</>}</div>
-            </div>
+            </div>)}
             {chapters.length > 0 && (
               <div role="note" style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 14, background: '#f6f1ff', border: '1px solid #d9ccf5' }}>
                 <datalist id="msb-chapters">{chapters.map(ch => <option key={ch} value={ch} />)}</datalist>
