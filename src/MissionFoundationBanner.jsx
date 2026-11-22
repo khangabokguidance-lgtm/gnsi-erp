@@ -11,12 +11,14 @@ export default function MissionFoundationBanner({ panel, photoOf = x => x, insti
   useStaffPhotos()
   const [layout, setLayout] = useState('poster')
   const order = SUBJECTS.map(s => s.label)
-  const people = useMemo(() => setterList(panel, order).map(p => {
+  // Not memoised on the panel alone: the ERP staff photos load a moment after the dialog opens (useStaffPhotos re-renders us then).
+  const people = setterList(panel, order).map(p => {
     const clean = cleanTeacherName(p.name)
-    return { ...p, label: titled(clean), photo: abs(findStaffPhoto(photoOf(clean) || clean)) || null }
-  }), [panel]) // eslint-disable-line react-hooks/exhaustive-deps
+    return { ...p, label: titled(clean), photo: abs(findStaffPhoto(photoOf(clean) || clean) || findStaffPhoto(clean)) || null }
+  })
+  const sig = people.map(p => p.name + '|' + (p.photo || '')).join(';')
   const args = { people, layout, title: 'Mission Foundation', session: (MISSION_NAME.match(/\d{4}-\d{2}/) || ['2026-27'])[0], institute: institute.name || 'Guidance Navodaya & Sainik Institute', logo: abs('/gnsi-logo-top.webp') }
-  const html = useMemo(() => bannerHtml(args), [people, layout]) // eslint-disable-line react-hooks/exhaustive-deps
+  const html = useMemo(() => bannerHtml(args), [sig, layout]) // eslint-disable-line react-hooks/exhaustive-deps
   const print = () => {
     if (denyPrint()) return
     const w = window.open('', '_blank'); if (!w) return alert('Allow pop-ups to print the banner.')
