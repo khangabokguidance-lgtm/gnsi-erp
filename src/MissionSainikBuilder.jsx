@@ -64,7 +64,8 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const isMe = n => nameMatches(currentUser?.matchName || currentUser?.name, n)
   const [qs, setQs] = useState([])
   const [setup, setSetup] = useState(false)
-  const [testNo, setTestNo] = useState(startTest || 1)
+  const [testNo, setTestNo] = useState(() => startTest || (cfg.tests.find(t => t.date && today && t.date >= today)?.no ?? (today && cfg.tests.some(t => t.date) ? cfg.tests[cfg.tests.length - 1].no : 1)))   // opens on the present test: the next one not yet held
+  const [showAll, setShowAll] = useState(false)   // false: only the present test is listed; true: every test
   const [sectionSel, setSection] = useState(startSection || cfg.sections[0].label)
   const [text, setText] = useState('')
   // The pasted text is kept on this device per test and section, so a reload (pull-down on a phone, a dropped connection) loses nothing
@@ -596,7 +597,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       {setup && <div style={{ padding: 12, marginBottom: 12, borderRadius: 12, background: PX.warnBg, color: PX.warn, fontSize: 13 }}>Run <b>supabase/migrations/20261206_mission_sainik_questions.sql</b> in Supabase to enable the builders.</div>}
       <PremiumCard title={`${cfg.name} ${cfg.noun === 'Set' ? '' : cfg.noun === 'Test' ? 'Builder' : 'Test Builder'}`.trim()} subtitle={`Assembles automatically as setters upload — ${cfg.noun === 'Set' ? '25 questions per subject set' : totalQ(1) + ' questions per test'}. Only a section's own setter (or an admin) can upload; everyone else can view and print.`}
         bodyStyle={{ padding: 0, overflowX: 'auto' }}>
-        {isMobile && (
+        {isMobile && showAll && (
           <div className="msb-strip" data-ti-skip role="tablist" aria-label={cfg.noun === 'Set' ? 'Choose a set' : 'Choose a test'} style={{ padding: '12px 12px 4px' }}>
             {cfg.tests.map(t => {
               const n = testCount(t.no), tot = totalQ(t.no), done = testReady(t.no)
@@ -611,6 +612,14 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             })}
           </div>
         )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '12px 16px', borderBottom: `1px solid ${PX.line}`, background: PX.tint }}>
+          <button type="button" className="px-btn ghost" aria-label={`Previous ${cfg.noun.toLowerCase()}`} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)} style={{ minWidth: 44 }}>‹</button>
+          <select aria-label={`Choose a ${cfg.noun.toLowerCase()}`} value={testNo} onChange={e => setTestNo(Number(e.target.value))} style={{ flex: '1 1 180px', maxWidth: 320, fontWeight: 700 }}>
+            {cfg.tests.map(t => <option key={t.no} value={t.no}>{tid(t.no)}{t.date ? ` · ${fmtShort(t.date)}` : ''}{testReady(t.no) ? ' · ready' : ''}</option>)}
+          </select>
+          <button type="button" className="px-btn ghost" aria-label={`Next ${cfg.noun.toLowerCase()}`} disabled={cfg.tests[cfg.tests.length - 1].no === testNo} onClick={() => stepTest(1)} style={{ minWidth: 44 }}>›</button>
+          <button type="button" className="px-btn ghost" style={{ marginLeft: 'auto' }} aria-pressed={showAll} onClick={() => setShowAll(v => !v)}>{showAll ? `Show present ${cfg.noun.toLowerCase()} only` : `Show all ${cfg.tests.length} ${cfg.noun.toLowerCase()}s`}</button>
+        </div>
         {nextMine && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', background: PX.goldBg, borderBottom: `1px solid ${PX.goldLine}` }}>
             <span style={{ flex: '1 1 220px', fontSize: 13, color: PX.ink }}>⭐ <b>Yours:</b> {tid(nextMine.t)} · {nextMine.s.short} — {get(nextMine.t, nextMine.s.label).length}/{nextMine.s.q} questions in</span>
@@ -618,7 +627,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           </div>)}
         {!isMobile && <table className="px-table" style={{ minWidth: 640 }}>
           <thead><tr><th>{cfg.noun === 'Set' ? 'Set' : 'Test'}</th>{cfg.sections.map(s => <th key={s.label}>{s.short}</th>)}<th>Total</th><th /></tr></thead>
-          <tbody>{cfg.tests.map(t => (
+          <tbody>{cfg.tests.filter(t => showAll || t.no === testNo).map(t => (
             <tr key={t.no} style={t.no === testNo ? { background: PX.tint } : undefined}>
               <td><button style={{ all: 'unset', cursor: 'pointer', fontWeight: 700, color: PX.navy }} onClick={() => setTestNo(t.no)}>{tid(t.no)}</button><div style={{ fontSize: 11, color: PX.sub }}>{t.date ? fmtShort(t.date) : ''}</div></td>
               {cfg.sections.map(s => avail(t.no, s) ? <td key={s.label} style={mineAt(t.no, s) ? { boxShadow: `inset 0 0 0 2px ${PX.gold}`, borderRadius: 8 } : undefined} title={mineAt(t.no, s) ? 'Your section' : undefined}><CountPill n={get(t.no, s.label).length} q={s.q} /></td> : <td key={s.label} style={{ color: PX.faint || '#9aa5b8' }}>—</td>)}
@@ -631,12 +640,6 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 
       <PremiumCard title={`${tid(testNo)}${ready ? ' · Ready to print' : ''}`} subtitle={`${testCount(testNo)} of ${totalQ(testNo)} questions in`}
         right={<span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{(!embargo || isAdmin) && <button className="px-hbtn" onClick={exportCsv}>⬇ Export bank</button>}<button className="px-hbtn" onClick={() => printDoc(testNo, false)}>🖨 Question paper</button><button className="px-hbtn" onClick={() => printDoc(testNo, true)}>🔑 Answer key</button></span>}>
-        {isMobile && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-            <button type="button" className="px-btn ghost" style={{ flex: 1 }} disabled={cfg.tests[0].no === testNo} onClick={() => stepTest(-1)}>‹ Previous</button>
-            <button type="button" className="px-btn ghost" style={{ flex: 1 }} disabled={cfg.tests[cfg.tests.length - 1].no === testNo} onClick={() => stepTest(1)}>Next ›</button>
-          </div>
-        )}
         <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr 1fr' : `repeat(${live(testNo).length}, 1fr)`, gap: 8 }}>
           {live(testNo).map(s => {
             const n = get(testNo, s.label).length, st = secStatus(testNo, s)
