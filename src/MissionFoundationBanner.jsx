@@ -17,7 +17,9 @@ export default function MissionFoundationBanner({ panel, photoOf = x => x, insti
     return { ...p, label: titled(clean), photo: abs(findStaffPhoto(photoOf(clean) || clean) || findStaffPhoto(clean)) || null }
   })
   const sig = people.map(p => p.name + '|' + (p.photo || '')).join(';')
-  const args = { people, layout, title: 'Mission Foundation', session: (MISSION_NAME.match(/\d{4}-\d{2}/) || ['2026-27'])[0], institute: institute.name || 'Guidance Navodaya & Sainik Institute', logo: abs('/gnsi-logo-top.webp') }
+  const customLogo = /^(https:\/\/|data:image\/)/.test(institute.logoUrl || '')   // the school's own logo from settings, else the GNSI lockup (it already carries the name)
+  const logo = customLogo ? institute.logoUrl : abs('/gnsi-logo-top.webp')
+  const args = { people, layout, title: 'Mission Foundation', session: (MISSION_NAME.match(/\d{4}-\d{2}/) || ['2026-27'])[0], institute: institute.name || 'Guidance Navodaya & Sainik Institute', logo, lockup: !customLogo }
   const html = useMemo(() => bannerHtml(args), [sig, layout]) // eslint-disable-line react-hooks/exhaustive-deps
   const print = () => {
     if (denyPrint()) return
