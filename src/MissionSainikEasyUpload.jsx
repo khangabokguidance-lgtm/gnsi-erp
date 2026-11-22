@@ -2,7 +2,7 @@
 //   1 tap your section  →  2 paste the questions (and the answer key if it is separate)  →  3 press Upload.
 // Light on data (no images), big tap targets, 16px text (no zoom on phones), plain-language checking.
 // The parent owns the draft text (it is already saved per test and section) and does the real upload.
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { PX } from './premiumUI'
 import { parseWithKey, friendlyErrors } from './lib/missionSainikQuestions'
 
@@ -22,7 +22,6 @@ export default function MissionSainikEasyUpload({ sections = [], testNo, section
   const [help, setHelp] = useState(false)
   const [seen, setSeen] = useState(readSeen)   // the 3-step guide shows until the person taps 'Got it'
   const [added, setAdded] = useState(0)        // how many were just uploaded (drives the 'done' panel)
-  useEffect(() => { if (text.trim()) setAdded(0) }, [text])
   const cur = sections.find(x => x.t === testNo && x.label === section)
   const parsed = useMemo(() => parseWithKey(text, keyText), [text, keyText])
   const problems = friendlyErrors(parsed.errors)
@@ -31,7 +30,7 @@ export default function MissionSainikEasyUpload({ sections = [], testNo, section
   const left = cur ? Math.max(0, cur.need - cur.have) : 0
 
   const paste = async () => {
-    try { const t = await navigator.clipboard.readText(); if (t) setText(x => (x.trim() ? x.replace(/\s+$/, '') + '\n\n' : '') + t) } catch { /* the browser asked and was refused: the box below still works with a long-press paste */ }
+    try { const t = await navigator.clipboard.readText(); if (t) { setAdded(0); setText(x => (x.trim() ? x.replace(/\s+$/, '') + '\n\n' : '') + t) } } catch { /* the browser asked and was refused: the box below still works with a long-press paste */ }
   }
   const go = async () => { const k = parsed.questions.length; if (await onUpload(parsed.questions)) { setKeyText(''); setAdded(k); window.scrollTo?.({ top: document.getElementById('msb-easy')?.offsetTop ? Math.max(0, document.getElementById('msb-easy').getBoundingClientRect().top + window.scrollY - 70) : 0, behavior: 'smooth' }) } }
   const nextSec = sections.find(x => !(x.t === testNo && x.label === section) && x.have < x.need)
@@ -56,7 +55,7 @@ export default function MissionSainikEasyUpload({ sections = [], testNo, section
               </ol>
               <pre style={{ margin: '0 0 8px', padding: 8, borderRadius: 10, background: '#fff', border: `1px solid ${PX.line}`, fontSize: 12.5, whiteSpace: 'pre-wrap' }}>{EXAMPLE}</pre>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button type="button" style={bigBtn(false)} onClick={() => { setText(x => (x.trim() ? x : EXAMPLE)); setHelp(false) }}>▶ Try the example</button>
+                <button type="button" style={bigBtn(false)} onClick={() => { setAdded(0); setText(x => (x.trim() ? x : EXAMPLE)); setHelp(false) }}>▶ Try the example</button>
                 <button type="button" style={bigBtn(true)} onClick={() => { writeSeen(); setSeen(true); setHelp(false) }}>Got it</button>
               </div>
             </div>
@@ -98,10 +97,10 @@ export default function MissionSainikEasyUpload({ sections = [], testNo, section
           {!mayEdit ? <div role="status" style={{ padding: '10px 12px', borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0', color: '#5c4510', fontSize: 14 }}>🔒 {why || 'You cannot upload to this section.'}</div> : <>
             <div>
               <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '.06em', textTransform: 'uppercase', color: PX.sub, marginBottom: 6 }}>2 · Paste your questions</div>
-              <textarea aria-label="Paste your questions" rows={7} value={text} onChange={e => setText(e.target.value)} placeholder={'Paste here. Each question: the question, options A–D, then Ans: B'} style={{ ...box, resize: 'vertical', minHeight: 150 }} />
+              <textarea aria-label="Paste your questions" rows={7} value={text} onChange={e => { setAdded(0); setText(e.target.value) }} placeholder={'Paste here. Each question: the question, options A–D, then Ans: B'} style={{ ...box, resize: 'vertical', minHeight: 150 }} />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                 <button type="button" style={bigBtn(false)} onClick={paste}>📋 Paste</button>
-                <label style={{ ...bigBtn(false), display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>📂 Open file<input type="file" accept=".txt,.csv,text/plain,text/csv" aria-label="Open a .txt or .csv file" style={{ display: 'none' }} onChange={onFile} /></label>
+                <label style={{ ...bigBtn(false), display: 'inline-flex', alignItems: 'center', cursor: 'pointer' }}>📂 Open file<input type="file" accept=".txt,.csv,text/plain,text/csv" aria-label="Open a .txt or .csv file" style={{ display: 'none' }} onChange={e => { setAdded(0); onFile(e) }} /></label>
                 {text.trim() && <button type="button" style={bigBtn(false)} onClick={() => { if (window.confirm('Clear what you pasted?')) { setText(''); setKeyText('') } }}>✕ Clear</button>}
                 <button type="button" style={{ ...bigBtn(false), borderStyle: 'dashed' }} aria-expanded={guide} onClick={() => setHelp(h => !h)}>❓ Help</button>
               </div>
