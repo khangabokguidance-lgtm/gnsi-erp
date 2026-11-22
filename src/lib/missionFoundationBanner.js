@@ -19,9 +19,9 @@ export function setterList(panel, subjectOrder = Object.keys(panel || {})) {
 export function bannerHtml({ people = [], layout = 'poster', title = 'Mission Foundation', session = '2026-27', tagline = 'Udaan · Pragati', institute = '', logo = '', lockup = false, heading = 'Our Question Setters', auto = false }) {
   const poster = layout !== 'banner'
   const n = Math.max(people.length, 1)
-  const cols = poster ? (n <= 4 ? 2 : n <= 9 ? 3 : 4) : (n <= 3 ? n : n <= 8 ? Math.ceil(n / 2) : Math.ceil(n / 3))
-  const photo = poster ? (cols === 2 ? 50 : cols === 3 ? 40 : 31) : Math.max(14, Math.min(50, Math.floor(262 / cols * 0.6)))   // mm
-  const fs = poster ? (cols === 2 ? ['7.4mm', '5mm'] : cols === 3 ? ['6mm', '4.2mm'] : ['5mm', '3.6mm']) : (photo >= 40 ? ['5.8mm', '4.2mm'] : photo >= 28 ? ['4.8mm', '3.6mm'] : ['4mm', '3mm'])
+  const cols = poster ? (n <= 4 ? 2 : n <= 9 ? 3 : n <= 12 ? 4 : 5) : (n <= 3 ? n : n <= 8 ? Math.ceil(n / 2) : Math.ceil(n / 3))
+  const photo = poster ? (cols === 2 ? 50 : cols === 3 ? 40 : cols === 4 ? 31 : 27) : Math.max(14, Math.min(50, Math.floor(262 / cols * 0.6)))   // mm
+  const fs = poster ? (cols === 2 ? ['7.4mm', '5mm'] : cols === 3 ? ['6mm', '4.2mm'] : cols === 4 ? ['5mm', '3.6mm'] : ['4.3mm', '3.1mm']) : (photo >= 40 ? ['5.8mm', '4.2mm'] : photo >= 28 ? ['4.8mm', '3.6mm'] : ['4mm', '3mm'])
   const words = String(title || '').trim().split(/\s+/)
   const first = esc(words.slice(0, -1).join(' ')), last = esc(words.slice(-1).join(' '))
   const card = p => `<div class="p"><div class="ring"><div class="ph">${p.photo ? `<img src="${esc(p.photo)}" alt="${esc(p.name)}">` : `<span>${esc(initials(p.name))}</span>`}</div></div><div class="plate"><b>${esc(p.label || p.name)}</b><i>${esc((p.subjects || []).join(' · '))}</i></div></div>`
