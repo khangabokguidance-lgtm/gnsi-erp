@@ -770,8 +770,11 @@ function getEffectiveMonthlyDueSync(student) {
 function downloadCSV(rows, filename) {
   if (!rows.length) return
   const h=Object.keys(rows[0])
-  const csv=[h.join(','),...rows.map(r=>h.map(k=>`"${(r[k]??'').toString().replace(/"/g,'""')}"`).join(','))].join('\n')
-  Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([csv],{type:'text/csv'})),download:filename}).click()
+  // A cell that starts with = + - @ (and is not just a number or phone number) would run as a formula in Excel: keep it as text.
+  const cell=v=>{const t=(v??'').toString();return /^[=@\t\r]/.test(t)||(/^[+-]/.test(t)&&!/^[+-]?[\d\s().-]+$/.test(t))?"'"+t:t}
+  const csv=[h.join(','),...rows.map(r=>h.map(k=>`"${cell(r[k]).replace(/"/g,'""')}"`).join(','))].join('\n')
+  // BOM: Excel then reads Manipuri / Bengali names as UTF-8 instead of garbling them
+  Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'})),download:filename}).click()
 }
 // Photos ZIP — one image per student, named after the student, so the photos can be
 // dropped straight into the certificate maker (it matches files to students by name).
