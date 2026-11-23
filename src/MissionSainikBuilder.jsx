@@ -22,7 +22,8 @@ import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
 import PaperPreview from './PaperPreview'
-import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches, matchesOne } from './missionSainikData'
+import MissionSainikStaffBoard from './MissionSainikStaffBoard'
+import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches, matchesOne, staffMatching } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
 const line = PX.line || '#eef1f6'
@@ -934,6 +935,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </div>
       </div>
 
+      {(series === 'practice' || series === 'pre') && <MissionSainikStaffBoard series={series} tests={cfg.tests} currentTest={testNo} tid={tid} sectionsOf={live} settersOf={settersOf} byVersion={byVersion}
+        rows={qs} signoffs={signoffs} same={(who, name) => matchesOne(who, name, staffNames)} displayName={n => (/\s/.test(n) ? n : fullName(n))} photoOf={n => (staffMatching(n, staffNames).length === 1 ? staffMatching(n, staffNames)[0] : n)} isMobile={isMobile} />}
 
       {!showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· {health.score}% healthy{isMobile ? '' : ' · versions, preview, Word, OMR'}</span></span><span>▸</span></button>}
       {showTools && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
