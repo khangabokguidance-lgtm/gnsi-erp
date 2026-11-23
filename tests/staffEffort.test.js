@@ -43,3 +43,13 @@ test('a balanced mix and explanations earn badges', () => {
   const ids = badgesOf(p).map(b => b.id)
   assert.ok(ids.includes('balanced')); assert.ok(ids.includes('explainer')); assert.ok(!ids.includes('hard'))
 })
+
+import { mergeTeacherSets } from '../src/lib/missionSainikPick.js'
+test('merging teachers keeps each set in order, drops repeats and names who is missing', () => {
+  const r = (id, by, question) => ({ id, uploaded_by: by, question })
+  const list = [r(1, 'Sunder', 'Q one'), r(2, 'Kabiraj', 'Q two'), r(3, 'Sunder', 'Q three'), r(4, 'Kabiraj', 'q  ONE'), r(5, 'Sunder', 'Q four')]
+  const m = mergeTeacherSets(list, 2, ['Sunder', 'Kabiraj', 'Bronson'])
+  assert.deepEqual(m.items.map(x => x.id), [1, 3, 2])                  // Sunder's 2 (the 3rd is an extra), then Kabiraj's minus the repeat
+  assert.deepEqual(m.groups.map(g => [g.by, g.letter, g.count, g.dropped]), [['Sunder', 'A', 2, 0], ['Kabiraj', 'B', 1, 1]])
+  assert.deepEqual(m.missing, [{ name: 'Bronson', have: 0, q: 2 }])
+})

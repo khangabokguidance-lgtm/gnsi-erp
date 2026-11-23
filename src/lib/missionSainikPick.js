@@ -66,3 +66,26 @@ export function flavourStatus(list, q) {
   if (!fl.length) return 'none'
   return fl.every(f => f.complete) ? 'ok' : 'part'
 }
+
+// ── Practice bank: merge every teacher's set into ONE complete paper ───────────────────────────────────────────────
+// list: the section's questions in upload order; q: questions one teacher's set holds; setters: the panel names allotted to the section;
+// same(uploadedBy, panelName) → the upload belongs to that panel name.
+// Teachers come in the order they first uploaded (Version A, B, …), each with their own set (up to q questions, in their order).
+// A question already in the merged paper (same text, ignoring case and spaces) is left out the second time.
+// → { items: [question + by], groups: [{ by, letter, count, dropped }], missing: [{ name, have, q }] }
+export function mergeTeacherSets(list, q, setters = [], same = (a, b) => String(a || '').trim() === String(b || '').trim()) {
+  const norm = x => String(x ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
+  const seen = new Set(), items = [], groups = []
+  flavours(list, q).forEach(f => {
+    let dropped = 0
+    const mine = f.items.slice(0, q).filter(x => { const k = norm(x.question); if (k && seen.has(k)) { dropped++; return false } if (k) seen.add(k); return true })
+    groups.push({ by: f.by, letter: f.letter, count: mine.length, dropped })
+    mine.forEach(x => items.push({ ...x, by: f.by }))
+  })
+  const fl = flavours(list, q)
+  const missing = [...new Set((setters || []).filter(Boolean))].map(name => {
+    const f = fl.find(x => same(x.by, name))
+    return { name, have: f ? Math.min(f.count, q) : 0, q }
+  }).filter(m => m.have < q)
+  return { items, groups, missing }
+}
