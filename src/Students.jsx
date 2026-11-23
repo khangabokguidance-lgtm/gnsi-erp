@@ -5694,6 +5694,19 @@ const effectiveCols = visibleCols.filter(col => {
   ...(can.viewPII ? [{
     label: 'Parent Contacts',
     fn: () => downloadCSV(filtered.map(s=>({Name:s.name||'',Father:s.father_name||'',Mother:s.mother_name||'',Phone:s.phone||'',Address:s.address||''})),`parents_${new Date().toISOString().slice(0,10)}.csv`)
+  }, {
+    // Full biodata — every profile field in one file (for the Mock Test Analyzer
+    // "Import ERP biodata" step and for offline records). Admin/manager only.
+    label: 'Full Biodata (CSV)',
+    fn: () => downloadCSV(filtered.map(s=>({
+      GCC: s.gcc_no || '', Name: s.name || '', Gender: s.gender || '', DOB: s.dob || '',
+      Caste: s.caste || '', Father: s.father_name || '', Mother: s.mother_name || '',
+      Phone: s.phone || '', WhatsApp: s.whatsapp_no || '', 'Emergency Contact': s.emergency_contact || '',
+      Address: s.address || '', District: s.district || '', 'Class Name': s.class_name || '',
+      Course: s.course || '', Batch: s.batch || '', Session: s.session || '', House: s.house || '',
+      Hostel: s.hostel_type || '', Status: s.status || '', 'Admission Date': s.admission_date || '',
+      'Medical Notes': s.medical_notes || '', Remarks: s.remarks || '',
+    })), `student_biodata_${new Date().toISOString().slice(0,10)}.csv`)
   }] : []),
 ]
 
