@@ -41,10 +41,9 @@ export default function PaperPreview({ html, title, isAdmin, restart = false, on
   const [editing, setEditing] = useState(false)    // text editing on the page
   const [o, setO] = useState(DEFAULTS)
   const [sel, setSel] = useState(null)
-  const [src, setSrc] = useState(html)
+  const [gen, setGen] = useState(0)                // bumped by "Undo all changes": remounts the iframe with the original paper
   const doc = () => ref.current?.contentDocument
 
-  useEffect(() => { setSrc(html) }, [html])
   // Apply the layout choices and keep text editing in step with the switch.
   const apply = () => {
     const d = doc(); if (!d?.head) return
@@ -72,7 +71,7 @@ export default function PaperPreview({ html, title, isAdmin, restart = false, on
   }
   const remove = () => { const el = cur(); if (!el) return; el.remove(); setSel(null); renumber(doc(), restart) }
   const brk = kind => { const el = cur(); if (!el) return; el.classList.toggle(kind === 'page' ? 'pe-pbreak' : 'pe-break') }
-  const reset = () => { setO(DEFAULTS); setEditing(false); setSel(null); setSrc(html + ' ') }   // a changed srcDoc reloads the original paper
+  const reset = () => { setO(DEFAULTS); setEditing(false); setSel(null); setGen(g => g + 1) }   // a new iframe reloads the original paper, every time
   const print = () => {
     const d = doc(); if (!d) return
     d.querySelectorAll('.pe-sel').forEach(x => x.classList.remove('pe-sel'))
@@ -121,7 +120,7 @@ export default function PaperPreview({ html, title, isAdmin, restart = false, on
               <button className="px-btn ghost" onClick={reset}>Undo all changes</button>
             </div>
           )}
-          <iframe ref={ref} title="Paper preview" srcDoc={src} onLoad={onLoad} style={{ flex: 1, border: 0, width: '100%', background: '#eef1f6' }} sandbox="allow-same-origin allow-modals" />
+          <iframe key={gen} ref={ref} title="Paper preview" srcDoc={html} onLoad={onLoad} style={{ flex: 1, border: 0, width: '100%', background: '#eef1f6' }} sandbox="allow-same-origin allow-modals" />
         </div>
       </div>
     </div>
