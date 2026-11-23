@@ -14,6 +14,8 @@ import { TestPicker } from './MissionFoundationWork'
 import { MISSION_NAME, DEFAULT_TEST_MINUTES, isSetter, settersOf, nameMatches, titled } from './missionFoundationData'
 import MissionSainikStaffBoard from './MissionSainikStaffBoard'
 import PaperPreview from './PaperPreview'
+import QuestionFilterBar from './QuestionFilterBar'
+import { EMPTY_FILTER, filterQuestions } from './lib/questionFilter'
 
 const T_QUESTIONS = 'mission_foundation_questions'
 const INSTITUTE = 'Guidance Navodaya & Sainik Institute'
@@ -42,8 +44,9 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
   const [viewing, setViewing] = useState(null)      // subject whose questions are listed
   const [cards, setCards] = useState([blankCard()])
   const [busy, setBusy] = useState(false)
-  const [opt, setOpt] = useState({ set: 'A', columns: 2, size: 13, instructions: PAPER_INSTRUCTIONS, explanations: false })
+  const [opt, setOpt] = useState({ set: 'A', columns: 2, size: 13, options: 'auto', instructions: PAPER_INSTRUCTIONS, explanations: false })
   const [preview, setPreview] = useState(false)
+  const [qf, setQf] = useState(EMPTY_FILTER)        // search + advanced filter of the listed section
   const [editor, setEditor] = useState(false)       // admin: the advanced editor over the printable paper
   const [allQ, setAllQ] = useState([])              // every test's questions (who, level), for the staff board
   const [tick, setTick] = useState(0)
@@ -79,7 +82,7 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
   const pct = model.wanted ? Math.min(100, Math.round((model.total / model.wanted) * 100)) : 0
   const title = test ? (test.title || 'Test ' + String(test.test_no).padStart(2, '0')) : ''
   const minutes = test?.duration_min || DEFAULT_TEST_MINUTES
-  const head = { institute: INSTITUTE, title: `${MISSION_NAME} · ${title}`, subtitle: 'Combined paper · ' + papers.map(p => p.subject).join(', '), date: fmtLong(test?.test_date), minutes, columns: opt.columns, size: opt.size, set: opt.set, instructions: opt.instructions, explanations: opt.explanations }
+  const head = { institute: INSTITUTE, title: `${MISSION_NAME} · ${title}`, subtitle: 'Combined paper · ' + papers.map(p => p.subject).join(', '), date: fmtLong(test?.test_date), minutes, columns: opt.columns, size: opt.size, options: opt.options, set: opt.set, instructions: opt.instructions, explanations: opt.explanations }
   const fileBase = `Mission-Foundation-${title.replace(/[^\w]+/g, '-')}${opt.set !== 'A' ? '-Set-' + opt.set : ''}`
 
   // ── adding questions to one subject ──
@@ -236,10 +239,12 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
         const p = papers.find(x => x.subject === viewing)
         const edit = canEdit(p)
         if (!s) return null
+        const shown = filterQuestions(s.items, qf).map(q => ({ q, i: s.items.indexOf(q) }))
         return (
           <PremiumCard title={`Section ${s.letter} · ${s.subject}`} subtitle={`${s.items.length} questions · Q ${s.start}–${s.end}`} right={<Btn onClick={() => setViewing(null)}>Close</Btn>}>
+            {s.items.length > 2 && <QuestionFilterBar list={s.items} value={qf} onChange={setQf} shown={shown.length} />}
             <div style={{ display: 'grid', gap: 8 }}>
-              {s.items.map((q, i) => (
+              {shown.map(({ q, i }) => (
                 <div key={q.id} style={{ border: `1px solid ${PX.line}`, borderRadius: 12, padding: 10, display: 'flex', gap: 10 }}>
                   <b style={{ minWidth: 28 }}>{s.start + i}.</b>
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -276,6 +281,8 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
               <option value={1}>1</option><option value={2}>2</option></select></label>
             <label>Text size <select className="px-input" style={{ width: 'auto' }} value={opt.size} onChange={e => setOpt({ ...opt, size: Number(e.target.value) })}>
               {[11, 12, 13, 14, 15, 16].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
+            <label>Options <select className="px-input" style={{ width: 'auto' }} value={opt.options} onChange={e => setOpt({ ...opt, options: e.target.value })}>
+              <option value="auto">Automatic (2 rows where they fit)</option><option value="two">Always 2 rows (2 × 2)</option><option value="four">All 4 in one row</option><option value="one">One per line</option></select></label>
           </div>
           <details style={{ marginBottom: 10 }}>
             <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>Instructions on the paper</summary>

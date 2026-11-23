@@ -22,13 +22,15 @@ export function paperModel(papers, questions, { set = 'A', seed = '' } = {}) {
   return { sections, total: no - 1, marks: sections.reduce((n, s) => n + s.marks, 0), wanted: sections.reduce((n, s) => n + s.wanted, 0) }
 }
 
-function optionsHtml(opts) {
+// Automatic: options in 2 rows (A B / C D) wherever they fit in half the column; one per line only when an option is too long.
+// style 'two' | 'four' | 'one' forces a layout.
+export function optionsHtml(opts, { cols = 2, style = 'auto' } = {}) {
   const len = Math.max(...opts.map(o => mathPlain(o.text).length))
-  const cls = len <= 11 ? 'o4' : len <= 27 ? 'o2' : 'o1'
+  const cls = style === 'two' ? 'o2' : style === 'four' ? 'o4' : style === 'one' ? 'o1' : len <= (cols === 1 ? 55 : 28) ? 'o2' : 'o1'
   return `<div class="op ${cls}">${opts.map(o => `<span><b>(${o.k})</b> ${mathToHtml(o.text)}</span>`).join('')}</div>`
 }
 
-// The question booklet. o: { institute, title, subtitle, date, minutes, columns (1|2), size (px), set, instructions }
+// The question booklet. o: { institute, title, subtitle, date, minutes, columns (1|2), size (px), set, instructions, options ('auto'|'two'|'four'|'one') }
 export function paperHtml(model, o = {}) {
   const cols = Number(o.columns) === 2 ? 2 : 1
   const size = Number(o.size) || 13
@@ -39,7 +41,7 @@ export function paperHtml(model, o = {}) {
     const qs = s.items.map((q, i) => {
       const p = q.passage && q.passage !== lastPassage ? `<div class="ps"><i>Read the passage and answer the questions that follow:</i><div>${mathToHtml(q.passage)}</div></div>` : ''
       lastPassage = q.passage || ''
-      return `${p}<div class="q"><div class="qt"><b>${s.start + i}.</b><span>${mathToHtml(q.question)}</span></div>${q.image_data && /^data:image\//.test(q.image_data) ? `<img class="oi" src="${esc(q.image_data)}" alt="Figure">` : ''}${optionsHtml(q.opts)}</div>`
+      return `${p}<div class="q"><div class="qt"><b>${s.start + i}.</b><span>${mathToHtml(q.question)}</span></div>${q.image_data && /^data:image\//.test(q.image_data) ? `<img class="oi" src="${esc(q.image_data)}" alt="Figure">` : ''}${optionsHtml(q.opts, { cols, style: o.options })}</div>`
     }).join('')
     return `<div class="sec"><div class="sh">Section ${esc(s.letter)} · ${esc(s.subject)} <small>(Q ${s.start}–${s.end} · ${s.items.length} × ${s.marksEach} = ${s.marks} marks)</small></div>${qs}</div>`
   }).join('')

@@ -27,6 +27,7 @@ export default function MissionSainikStaffBoard({ label, unit = 'test', storageK
   const [scope, setScope] = useState('test')     // 'test' (the open test or set) | 'all'
   const [open, setOpen] = useState(() => { try { return localStorage.getItem(storageKey) !== 'closed' } catch { return true } })
   const [how, setHow] = useState(false)
+  const [flt, setFlt] = useState({ q: '', tag: '', section: '', level: '' })   // filter of the setter list
   const toggle = v => { setOpen(v); try { localStorage.setItem(storageKey, v ? 'open' : 'closed') } catch { /* storage blocked */ } }
   const scopeTests = scope === 'all' ? tests.map(t => t.no) : [currentTest]
   const board = useMemo(() => {
@@ -39,6 +40,11 @@ export default function MissionSainikStaffBoard({ label, unit = 'test', storageK
     return staffBoard({ assignments, rows: rows.filter(q => inScope.has(q.test_no)), signoffs: signoffs.filter(s => inScope.has(s.test_no)), same })
   }, [scope, currentTest, rows, signoffs, byVersion]) // eslint-disable-line react-hooks/exhaustive-deps
   const people = board.people
+  const secNames = [...new Set(people.flatMap(p => p.secs.map(x => x.section)))]
+  const listed = people.filter(p => (!flt.q.trim() || p.name.toLowerCase().includes(flt.q.trim().toLowerCase()))
+    && (!flt.tag || (flt.tag === 'hardworking' ? ['star', 'hardworking'].includes(p.detector?.id) : p.detector?.id === flt.tag))
+    && (!flt.section || p.secs.some(x => x.section === flt.section))
+    && (!flt.level || (p.levels[flt.level] || 0) > 0))
   const stars = people.filter(p => p.detector && (p.detector.id === 'star' || p.detector.id === 'hardworking'))
   const scopeName = scope === 'all' ? `all ${tests.length} ${unit}s` : tid(currentTest)
 
@@ -74,8 +80,18 @@ export default function MissionSainikStaffBoard({ label, unit = 'test', storageK
               <span style={{ fontSize: 12, color: PX.sub }}>{p.points} pts · {p.uploaded} Qs · {p.levels.Hard} hard</span>
             </div>))}
         </div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          <input className="px-input" type="search" placeholder="Find a teacher…" aria-label="Find a teacher" value={flt.q} onChange={e => setFlt({ ...flt, q: e.target.value })} style={{ flex: '1 1 160px' }} />
+          <select className="px-input" aria-label="Detector" value={flt.tag} onChange={e => setFlt({ ...flt, tag: e.target.value })} style={{ flex: '0 1 190px' }}>
+            <option value="">Everyone</option><option value="hardworking">💪 Hardworking</option><option value="star">🔥 Hardworking · tough</option><option value="tough">Tough setter</option><option value="steady">Steady</option><option value="easyHeavy">Mostly easy</option><option value="behind">Behind the team</option><option value="notStarted">Not started</option>
+          </select>
+          {secNames.length > 1 && <select className="px-input" aria-label="Section" value={flt.section} onChange={e => setFlt({ ...flt, section: e.target.value })} style={{ flex: '0 1 170px' }}><option value="">All sections</option>{secNames.map(x => <option key={x}>{x}</option>)}</select>}
+          <select className="px-input" aria-label="Has questions of level" value={flt.level} onChange={e => setFlt({ ...flt, level: e.target.value })} style={{ flex: '0 1 150px' }}><option value="">Any level</option><option value="Hard">Has hard</option><option value="Medium">Has medium</option><option value="Easy">Has easy</option></select>
+          {(flt.q || flt.tag || flt.section || flt.level) && <button type="button" className="px-btn ghost" onClick={() => setFlt({ q: '', tag: '', section: '', level: '' })}>Clear · {listed.length} of {people.length}</button>}
+        </div>
         <div style={{ display: 'grid', gap: 8 }}>
-          {people.map(p => {
+          {!listed.length && <div style={{ color: PX.sub, fontSize: 13 }}>No teacher matches this filter.</div>}
+          {listed.map(p => {
             const [bg, fg, ln] = TONE[p.detector?.tone || 'info']
             return (
               <div key={p.name} style={{ display: 'grid', gridTemplateColumns: isMobile ? 'auto 1fr' : 'auto minmax(150px,1.2fr) minmax(140px,1fr) minmax(120px,.9fr) auto', gap: isMobile ? '8px 10px' : 14, alignItems: 'center', padding: '10px 12px', border: `1px solid ${PX.line}`, borderRadius: 14, background: '#fff' }}>

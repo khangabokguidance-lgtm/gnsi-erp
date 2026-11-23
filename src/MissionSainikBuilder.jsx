@@ -22,6 +22,8 @@ import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
 import PaperPreview from './PaperPreview'
+import QuestionFilterBar from './QuestionFilterBar'
+import { EMPTY_FILTER, filterQuestions } from './lib/questionFilter'
 import MissionSainikStaffBoard from './MissionSainikStaffBoard'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches, matchesOne, staffMatching } from './missionSainikData'
 
@@ -128,7 +130,8 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const [moveTo, setMoveTo] = useState({ test: '', section: '' })
   const [reviews, setReviews] = useState([])
   const [newNote, setNewNote] = useState('')
-  const [qSearch, setQSearch] = useState(''), [qLevel, setQLevel] = useState('')
+  const [qf, setQf] = useState(EMPTY_FILTER)   // search + advanced filter of the question list
+  const qKey = JSON.stringify(qf)
   const [soft, setSoft] = useState(true)   // false until the launch migration (deleted_at column) has been run
 
   const load = useCallback(async () => {
@@ -510,7 +513,8 @@ ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '
     const o = (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(x => ({ k: x.k.toLowerCase(), text: String(x.text ?? '') }))
     const len = Math.max(...o.map(x => mathPlain(x.text).length))
     const wide = pc.columns === 1 || ver.layout !== 'book'   // a one-column page has about twice the room per option
-    const cls = pc.optStyle === 'two' ? 'two' : pc.optStyle === 'one' ? 'one' : len <= (wide ? 20 : 8) ? 'four' : len <= (wide ? 42 : 19) ? 'two' : 'one'
+    // Automatic: options in 2 rows (a b / c d) wherever they fit in half the column; one per line only when an option is too long.
+    const cls = ['two', 'one', 'four'].includes(pc.optStyle) ? pc.optStyle : len <= (wide ? 50 : 24) ? 'two' : 'one'
     return `<div class="o ${cls}">${o.map(x => `<span><i>(${x.k})</i> ${mathToHtml(x.text)}</span>`).join('')}</div>`
   }
   // Passage header for the first question of a run that shares a passage, plus the figure under a stem.
@@ -768,8 +772,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const myCount = byVersion ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
   const mayAdd = canUpload(testNo, sec.label)   // may add questions (setter only on Pre Mock, Mock and Practice)
   const overview = !mayAdd || (byVersion && myCount === 0 && secList.length > 0 && !settersOf(testNo, section).some(isMe))   // an admin / verifier looking at the section, not a setter with a set of their own
-  const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
-  const limN = lim.k === `${testNo}|${section}|${qSearch}|${qLevel}` ? lim.n : 10
+  const listShown = (() => { const at = new Map(secList.map((q, i) => [q.id, i])); return filterQuestions(secList, qf, { offIds: new Set(offList.map(q => q.id)) }).map(q => ({ q, i: at.get(q.id) })) })()
+  const limN = lim.k === `${testNo}|${section}|${qKey}` ? lim.n : 10
   const ready = testReady(testNo)
   const health = paperHealth(live(testNo).map(x => ({ label: x.label, q: x.q, items: get(testNo, x.label) })), qs, testNo)
   const lvl = { Easy: 0, Medium: 0, Hard: 0 }; secList.forEach(q => { if (lvl[q.difficulty] != null) lvl[q.difficulty]++ })
@@ -980,7 +984,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                     <label style={lab}>Font<select className="px-input" value={pc.font} onChange={e => setPc({ ...pc, font: e.target.value })}>{Object.entries(FONT_STACKS).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}</select></label>
                     <label style={lab}>Size ({pc.size} pt)<input type="range" min="8" max="14" step="0.2" value={pc.size} onChange={e => setPc({ ...pc, size: Number(e.target.value) })} style={{ width: '100%' }} /></label>
                     <label style={lab}>Line spacing<select className="px-input" value={pc.line} onChange={e => setPc({ ...pc, line: Number(e.target.value) })}>{[1.1, 1.2, 1.28, 1.4, 1.6, 1.8].map(v => <option key={v} value={v}>{v}</option>)}</select></label>
-                    <label style={lab}>Options<select className="px-input" value={pc.optStyle} onChange={e => setPc({ ...pc, optStyle: e.target.value })}><option value="auto">Automatic (4-up / 2-up / stacked)</option><option value="two">Always 2 × 2</option><option value="one">Always stacked</option></select></label>
+                    <label style={lab}>Options<select className="px-input" value={pc.optStyle} onChange={e => setPc({ ...pc, optStyle: e.target.value })}><option value="auto">Automatic (2 rows where they fit)</option><option value="two">Always 2 rows (2 × 2)</option><option value="four">All 4 in one row</option><option value="one">One per line</option></select></label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center' }}>{chk('rule', 'Line between columns')}{chk('banner', 'Title banner')}{chk('note', 'Instruction note')}</div>
                   </div>
                   <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: '#fff', border: `1px solid ${line}`, fontFamily: FONT_STACKS[pc.font][1], fontSize: `${pc.size}pt`, lineHeight: pc.line }}>
@@ -1202,12 +1206,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 
       <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see its options and answer' : ''}
         right={mayEdit && secList.length ? <button className="px-hbtn" onClick={() => setPicked(picked.length === secList.filter(canModify).length ? [] : secList.filter(canModify).map(q => q.id))}>{picked.length === secList.filter(canModify).length ? 'Clear selection' : 'Select all'}</button> : null}>
-        {secList.length > 5 && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-            <input className="px-input" style={{ flex: '1 1 200px' }} type="search" value={qSearch} onChange={e => setQSearch(e.target.value)} placeholder="Search questions, topics, options…" aria-label="Search questions" />
-            <select className="px-input" style={{ flex: '0 1 140px' }} value={qLevel} onChange={e => setQLevel(e.target.value)} aria-label="Filter by level"><option value="">Any level</option><option>Easy</option><option>Medium</option><option>Hard</option></select>
-            {(qSearch || qLevel) && <span style={{ alignSelf: 'center', fontSize: 12.5, color: PX.sub }}>{listShown.length} of {secList.length}</span>}
-          </div>)}
+        {secList.length > 2 && (
+          <QuestionFilterBar list={secList} value={qf} onChange={setQf} shown={listShown.length} showChosen={isAdmin && !byVersion} showOffPlan={offList.length > 0} />)}
         {mayEdit && picked.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '8px 10px', margin: '0 0 8px', borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0', position: 'sticky', top: 0, zIndex: 3 }}>
             <b style={{ fontSize: 13 }}>{picked.length} selected</b>
@@ -1274,7 +1274,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             )}
           </div>
         ))}
-        {listShown.length > limN && <div style={{ textAlign: 'center', paddingTop: 10, borderTop: `1px solid ${line}` }}><button type="button" className="px-btn ghost" onClick={() => setLim({ k: `${testNo}|${section}|${qSearch}|${qLevel}`, n: limN + 15 })}>Show {Math.min(15, listShown.length - limN)} more · {limN} of {listShown.length} shown</button></div>}
+        {listShown.length > limN && <div style={{ textAlign: 'center', paddingTop: 10, borderTop: `1px solid ${line}` }}><button type="button" className="px-btn ghost" onClick={() => setLim({ k: `${testNo}|${section}|${qKey}`, n: limN + 15 })}>Show {Math.min(15, listShown.length - limN)} more · {limN} of {listShown.length} shown</button></div>}
       </PremiumCard>
       {binCount > 0 && (!showBin ? <button type="button" className="px-btn ghost" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', margin: '0 0 14px', padding: '12px 16px', textAlign: 'left' }} onClick={() => setShowBin(true)}><span><b>🗑 Recycle bin ({binCount})</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· restore deleted questions</span></span><span>▸</span></button> : <PremiumCard title={`Recycle bin (${binCount})`} subtitle="Deleted questions can be restored by the setter or an admin" right={<button className="px-hbtn" onClick={() => setShowBin(v => !v)}>{showBin ? 'Hide' : 'Show'}</button>}>
         {showBin && (bin === null ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Loading…</div> : !bin.length ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Empty.</div> : bin.slice(0, 100).map(q => (
