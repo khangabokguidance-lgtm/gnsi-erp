@@ -9,7 +9,7 @@
 //   store    lib/mockTestStore.js    Supabase table + browser fallback
 import { useState, useEffect, useMemo, useCallback, useRef, Fragment } from 'react';
 import {
-  DEFAULT_SERIES, MEGA_SERIES, inScope, parseResultSheet, inferMax, guessFromFilename, resolveIdentities, seriesMeta,
+  DEFAULT_SERIES, MEGA_SERIES, inScope, defaultTestName, fileMockKind, parseResultSheet, inferMax, guessFromFilename, resolveIdentities, seriesMeta,
   studentAnalysis, batchAnalysis, batchComparison, matchingReport, rowsFromSeed, strengthLabel, r1, r2, cleanName, gccDigits,
 } from './lib/mockTestEngine';
 import { lineChart, barChart, radarChart, hBars, subjColor } from './lib/mockTestCharts';
@@ -468,7 +468,7 @@ function ExamInsights({ rows, series, seriesLabel, scope, institute, otherNames,
       </div>
 
       <div style={ui.card}>
-        <h4 style={{ margin: '0 0 8px' }}>🔁 {mega_(scope) ? 'Pre Mock vs Mega Mock' : 'Pre Mock vs Mega Mock'} comparison</h4>
+        <h4 style={{ margin: '0 0 8px' }}>🔁 Pre Mock vs Mega Mock comparison</h4>
         <Field label={mega_(scope) ? 'Compare with Pre Mock series' : 'Compare with Mega Mock series'}>
           <select style={ui.input} value={otherSeries} onChange={(e) => setOtherSeries(e.target.value)}>
             <option value="">— choose —</option>
@@ -1043,7 +1043,9 @@ function DataView({ scope, allRows, rawRows, rows, fixes, fixMode, series, setSe
           const inf = inferMax(p.rows, p.subjects);
           const max = {};
           p.subjects.forEach((s) => { max[s] = known[s] ?? inf[s]; });
-          out.push({ key: f.name + Math.random(), name: f.name, test_no: g.test_no ?? '', batch: g.batch, test_name: g.test_no ? `Pre Mock Test ${g.test_no}` : '', test_date: '', parsed: p, max });
+          const kind = fileMockKind(f.name);
+          if (kind && kind !== (scope === 'mega' ? 'mega' : 'pre')) throw new Error(kind === 'mega' ? 'This file is a Mega Mock Test result. Upload it in the Mega Mock Analyser so it is not mixed with the Pre Mock Tests.' : 'This file is a Pre Mock Test result. Upload it in the Pre Mock Analyser so it is not mixed with the Mega Mock Tests.');
+          out.push({ key: f.name + Math.random(), name: f.name, test_no: g.test_no ?? '', batch: g.batch, test_name: g.test_no ? defaultTestName(scope === 'mega' ? MEGA_SERIES : DEFAULT_SERIES, g.test_no) : '', test_date: '', parsed: p, max });
         } catch (e) { out.push({ key: f.name + Math.random(), name: f.name, error: e.message || String(e) }); }
       }
       setFiles((cur) => [...cur, ...out]);
@@ -1053,7 +1055,7 @@ function DataView({ scope, allRows, rawRows, rows, fixes, fixMode, series, setSe
   const buildRows = (f) => {
     const maxTotal = f.parsed.subjects.reduce((s, x) => s + Number(f.max[x] || 0), 0);
     return f.parsed.rows.map((r) => ({
-      series: newSeries.trim(), test_no: Number(f.test_no), test_name: f.test_name || `Test ${f.test_no}`, test_date: f.test_date || null, batch: f.batch.trim(),
+      series: newSeries.trim(), test_no: Number(f.test_no), test_name: f.test_name || defaultTestName(newSeries.trim(), f.test_no), test_date: f.test_date || null, batch: f.batch.trim(),
       gcc_no: r.gcc_no, student_name: r.student_name, marks: r.marks, max_marks: { ...f.max }, total: r.total, max_total: maxTotal, rank: r.rank, source_file: f.name,
     }));
   };
