@@ -9,7 +9,7 @@ import { fetchAll } from './lib/missionSainikQuestions'
 import { TESTS, MOCK_TESTS, fullName } from './missionSainikData'
 
 const TABLE = 'mission_sainik_tasks'
-const SERIES = [['pre', 'Pre Mock', TESTS, 'PMT'], ['mega', 'Mega Mock', MOCK_TESTS, 'MT'], ['daily', 'Daily Class Test', TESTS, 'T'], ['practice', 'Practice Bank', TESTS, 'PMT']]
+const SERIES = [['pre', 'Pre Mock', TESTS, 'PMT'], ['mega', 'Mega Mock', MOCK_TESTS, 'MT'], ['daily', 'Daily Class Test', TESTS, 'T'], ['practice', 'Practice Maker', TESTS, 'PB']]
 const csvCell = v => { const t = String(v ?? ''); return '"' + (/^[=+\-@\t\r]/.test(t) ? "'" + t : t).replace(/"/g, '""') + '"' }
 const download = (name, blob) => { const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = name; a.click(); URL.revokeObjectURL(url) }
 const taskLabel = r => `${r.kind === 'test' ? 'PMT-' + String(r.test_no).padStart(2, '0') : 'Practice'} · ${r.subject}`

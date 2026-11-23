@@ -127,7 +127,7 @@ const CSS = `
 
 const SERVICES = [
   ['prebuilder', 'Upload my questions', 'Add questions to a Pre Mock test'],
-  ['practicebuilder', 'Make a practice set', 'Add up to 25 questions per subject'],
+  ['practicebuilder', 'Practice Maker', 'Add up to 25 questions per subject'],
   ['mine', 'See my tasks', 'What I must set or verify, and by when'],
   ['syllabus', 'Check the syllabus', 'Which chapter is in which test'],
   ['marks', 'Enter test marks', 'Type or import results'],

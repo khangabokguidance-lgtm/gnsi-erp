@@ -50,7 +50,7 @@ export default function MissionSainikPracticePlan({ questionsPer = () => 25, cov
   const pill = on => ({ padding: '7px 14px', borderRadius: 99, border: `1.5px solid ${on ? PX.navy : PX.line}`, background: on ? PX.navy : '#fff', color: on ? '#fff' : PX.navy, fontWeight: 800, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' })
 
   return (
-    <PremiumCard title="Practice teachers" subtitle={isAdmin ? 'Every practice teacher sets their own questions for every test (PMT-01 to PMT-20), each on that test’s planned chapter. Add the teachers and choose who verifies.' : 'Who sets the practice questions of each subject, and how far each has got.'}>
+    <PremiumCard title="Practice teachers" subtitle={isAdmin ? 'Every practice teacher sets their own questions for every test (practice sets PB-01 to PB-20, one for each Pre Mock PMT-01 to PMT-20), each on that test’s planned chapter. Add the teachers and choose who verifies.' : 'Who sets the practice questions of each subject, and how far each has got.'}>
       <div data-ti-skip role="tablist" aria-label="Subject" style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 8, marginBottom: 8 }}>
         {SUBJECTS.map(x => <button key={x.key} type="button" role="tab" aria-selected={x.key === sub.key} style={pill(x.key === sub.key)} onClick={() => setKey(x.key)}>{x.short}</button>)}
       </div>

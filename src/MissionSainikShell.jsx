@@ -14,7 +14,7 @@ const HINTS = {
   overview: 'Dashboard, countdown, what needs attention', schedule: 'Test dates and deadlines calendar', mock: 'Mock series list and results', allotment: 'Who sets which paper',
   syllabus: 'Chapter plan for each test', panel: 'Teachers, setters, verifiers', students: 'All Sainik and Combined course students, photos, print', mine: 'My assigned tasks, submit and verify', practice: 'Practice sets and questions',
   material: 'Notes, PDFs, links for students', prebuilder: 'Build Pre Mock test papers, upload questions', megabuilder: 'Build Mega Mock papers', dailybuilder: 'Build Daily class tests',
-  practicebuilder: 'Build practice sets (25 per subject)', marks: 'Enter and import daily class test marks', mockmarks: 'Marks of every student in a Pre or Mega Mock test, with Absent', admit: 'Print admit cards for a mock test', certs: 'Rank students, result list, merit certificates', premock: 'Analyse Pre Mock results', megamock: 'Analyse Mega Mock results',
+  practicebuilder: 'Practice Maker: practice sets PB-01… (kept apart from Pre Mock papers)', marks: 'Enter and import daily class test marks', mockmarks: 'Marks of every student in a Pre or Mega Mock test, with Absent', admit: 'Print admit cards for a mock test', certs: 'Rank students, result list, merit certificates', premock: 'Analyse Pre Mock results', megamock: 'Analyse Mega Mock results',
   activity: 'Teacher upload and task activity', insights: 'Weak chapters, trends, tips', guide: 'Step-by-step help for every screen', admin: 'Locks, approvals, backup, audit log',
 }
 const store = {
