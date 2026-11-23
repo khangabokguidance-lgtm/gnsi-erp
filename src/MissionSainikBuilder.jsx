@@ -19,10 +19,13 @@ import { settersOfRow } from './lib/missionSainikAllot'
 import { findNear } from './lib/missionSainikSimilar'
 import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
-import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
+import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus, mergeTeacherSets } from './lib/missionSainikPick'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
 import PaperPreview from './PaperPreview'
-import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches, matchesOne } from './missionSainikData'
+import QuestionFilterBar from './QuestionFilterBar'
+import { EMPTY_FILTER, filterQuestions } from './lib/questionFilter'
+import MissionSainikStaffBoard from './MissionSainikStaffBoard'
+import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches, matchesOne, staffMatching } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
 const line = PX.line || '#eef1f6'
@@ -127,7 +130,8 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   const [moveTo, setMoveTo] = useState({ test: '', section: '' })
   const [reviews, setReviews] = useState([])
   const [newNote, setNewNote] = useState('')
-  const [qSearch, setQSearch] = useState(''), [qLevel, setQLevel] = useState('')
+  const [qf, setQf] = useState(EMPTY_FILTER)   // search + advanced filter of the question list
+  const qKey = JSON.stringify(qf)
   const [soft, setSoft] = useState(true)   // false until the launch migration (deleted_at column) has been run
 
   const load = useCallback(async () => {
@@ -442,12 +446,33 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   }
   const range = s => `Q${startOf(s.label)}–Q${startOf(s.label) + s.q - 1}`
   const SET_LETTERS = ['A', 'B', 'C', 'D']
-  const assemble = (t, setIdx = 0) => printLive(t).map(sc => {
+  // Practice: "merge" puts every teacher's own set of a section into ONE complete paper (Version A's questions, then B's, …),
+  // numbered straight through. `mergeNow` lets a button preview the merged paper in the same click that switches it on.
+  let mergeNow = byVersion && !!ver.merge
+  const mergedOf = (t, label) => { const sc = cfg.sections.find(x => x.label === label); return mergeTeacherSets(setRows(t, label), sc?.q || 0, settersOf(t, label), (who, name) => matchesOne(who, name, staffNames)) }
+  const nSets = () => (mergeNow ? 1 : ver.sets)
+  const assemble = (t, setIdx = 0) => mergeNow ? (() => {
+    let no = 1
+    return printLive(t).map(sc => {
+      const m = mergedOf(t, sc.label)
+      let items = m.items
+      if (ver.shuffleQ || ver.shuffleOpts) items = makeVersion(items, { seed: `${series}|${t}|${sc.label}|M`, shuffleQ: ver.shuffleQ, shuffleOpts: ver.shuffleOpts })
+      const from = no; no += items.length
+      const want = Math.max(items.length, (m.groups.length + m.missing.filter(x => !x.have).length) * sc.q)   // every allotted teacher's full set
+      let last = ''
+      return { ...sc, q: want, from, missing: m.missing, groups: m.groups, items: items.map((q, i) => { const head = !ver.shuffleQ && q.by !== last ? q.by : ''; last = q.by; return { ...q, no: from + i, head } }) }
+    })
+  })() : printLive(t).map(sc => {
     // Practice bank: Version A is the first teacher's own set, B the second's … Other series: the admin's chosen questions (or the first q).
     let items = byVersion ? flavourItems(setRows(t, sc.label), sc.q, setIdx) : usedQuestions(get(t, sc.label), sc.q)
     if (ver.shuffleQ || ver.shuffleOpts) items = makeVersion(items, { seed: `${series}|${t}|${sc.label}|${SET_LETTERS[setIdx]}`, shuffleQ: ver.shuffleQ, shuffleOpts: ver.shuffleOpts })
     return { ...sc, from: startOf(sc.label), items: items.map((q, i) => ({ ...q, no: startOf(sc.label) + i })) }
   })
+  const qTotal = (t, secs) => (mergeNow ? secs.reduce((a, x) => a + x.q, 0) : printTotal(t))
+  const lastNo = x => x.from + (mergeNow ? Math.max(1, x.items.length) : x.q) - 1
+  // Merged practice paper: who set each run of questions (printed), and whose set is still missing (screen only).
+  const byHead = q => (q.head ? `<div class="by">Set by ${esc(fullName(q.head))}</div>` : '')
+  const missHtml = x => (x.missing || []).map(m => `<div class="empty miss">Missing: ${esc(fullName(m.name))} — ${m.have ? `${m.have} of ${m.q} questions uploaded` : 'nothing uploaded yet'}</div>`).join('')
   const blocked = t => embargo && !isAdmin && dateOf(t) && today < dateOf(t)
   const F = FONT_STACKS[pc.font][1]
   // A CSS string literal (for @page margin boxes) and the page footer: the institute's footer line, then the page number.
@@ -497,11 +522,11 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
     const secs = assemble(t, setIdx)
     const id = `${cfg.prefix}-${String(t).padStart(2, '0')}${series === 'practice' ? ` (for PMT-${String(t).padStart(2, '0')})` : ''}`
     const date = cfg.tests.find(x => x.no === t)?.date
-    const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
+    const setTag = mergeNow ? ' · All teachers' : nSets() > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
     const marks = secs.reduce((a, x) => a + x.q * x.marks, 0)
     const lines = String(brand.instructions || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean)
     return `<div class="cover">${logoImg}<h1>${esc(instName)}</h1>${brand.tagline ? `<div class="tag">${esc(brand.tagline)}</div>` : '<div class="tag">&nbsp;</div>'}
-<h2>${esc(paperName)} — ${esc(id)}${esc(setTag)}</h2><div class="facts">${[date ? fmtShort(date) : '', cfg.noMarks ? '' : `${printTotal(t)} questions`, cfg.noMarks ? '' : `${marks} marks`, cfg.noMarks ? '' : cfg.duration].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ')}</div>
+<h2>${esc(paperName)} — ${esc(id)}${esc(setTag)}</h2><div class="facts">${[date ? fmtShort(date) : '', cfg.noMarks ? '' : `${qTotal(t, secs)} questions`, cfg.noMarks ? '' : `${marks} marks`, cfg.noMarks ? '' : cfg.duration].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ')}</div>
 <table><tr><td>Candidate's name: <span></span></td><td>Roll / GCC no.: <span></span></td></tr><tr><td>Batch: <span></span></td><td>Signature: <span></span></td></tr></table>
 ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : ''}<div class="dn">DO NOT OPEN UNTIL TOLD TO DO SO</div></div>`
   }
@@ -509,7 +534,8 @@ ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '
     const o = (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(x => ({ k: x.k.toLowerCase(), text: String(x.text ?? '') }))
     const len = Math.max(...o.map(x => mathPlain(x.text).length))
     const wide = pc.columns === 1 || ver.layout !== 'book'   // a one-column page has about twice the room per option
-    const cls = pc.optStyle === 'two' ? 'two' : pc.optStyle === 'one' ? 'one' : len <= (wide ? 20 : 8) ? 'four' : len <= (wide ? 42 : 19) ? 'two' : 'one'
+    // Automatic: options in 2 rows (a b / c d) wherever they fit in half the column; one per line only when an option is too long.
+    const cls = ['two', 'one', 'four'].includes(pc.optStyle) ? pc.optStyle : len <= (wide ? 50 : 24) ? 'two' : 'one'
     return `<div class="o ${cls}">${o.map(x => `<span><i>(${x.k})</i> ${mathToHtml(x.text)}</span>`).join('')}</div>`
   }
   // Passage header for the first question of a run that shares a passage, plus the figure under a stem.
@@ -524,26 +550,26 @@ ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '
   const draftTop = secs => {
     const short = secs.filter(x => x.items.length < x.q)
     if (!short.length) return ''
-    return `<div class="draft">INCOMPLETE PAPER — ${short.map(x => `${esc(x.title || x.label)}: ${x.items.length ? `${x.items.length} of ${x.q}` : 'no'} questions`).join(' · ')}. Shown here only: the printed paper leaves these sections out.</div>`
+    return `<div class="draft">INCOMPLETE PAPER — ${short.map(x => `${esc(x.title || x.label)}: ${x.items.length ? `${x.items.length} of ${x.q}` : 'no'} questions`).join(' · ')}. Shown here only: a section with no questions is left out of the printed paper.</div>`
   }
   const bookBody = (t, key, setIdx, first) => {
     const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
     const allVerified = live(t).every(x => signoff(t, x.label))
     const id = `${cfg.prefix}-${String(t).padStart(2, '0')}${series === 'practice' ? ` (for PMT-${String(t).padStart(2, '0')})` : ''}`
-    const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
+    const setTag = mergeNow ? ' · All teachers' : nSets() > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
     const date = cfg.tests.find(x => x.no === t)?.date
     const letter = i => String.fromCharCode(65 + i)
-    const banner = `<div class="banner">${logoImg}<div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : cfg.paper ? 'PRACTICE' : 'MODEL SET'}</i></div><div><h1>${esc(instName)}<br>${esc(paperName)} — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1>${brand.tagline ? `<div class="bn-t">${esc(brand.tagline)}</div>` : ''}<div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${printTotal(t)} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
+    const banner = `<div class="banner">${logoImg}<div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : cfg.paper ? 'PRACTICE' : 'MODEL SET'}</i></div><div><h1>${esc(instName)}<br>${esc(paperName)} — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1>${brand.tagline ? `<div class="bn-t">${esc(brand.tagline)}</div>` : ''}<div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${qTotal(t, secs)} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
     let li = 0   // section letters count only the sections that are printed (an empty one is left out)
     const sections = secs.map(x => {
       const head = `<div class="sec">${x.items.length ? `Section–${letter(li++)}: ` : ''}${esc(x.title)}</div>${x.instruction && !key ? `<div class="ins">${esc(x.instruction)}</div>` : ''}`
       if (key) return head + x.items.map(q => `<div class="sol"><b>${q.no}.</b><span><b>(${q.answer.toLowerCase()})</b> ${mathToHtml(q.explanation || '')}${q.topic || q.difficulty ? ` <span class="m">[${esc([q.topic, q.difficulty].filter(Boolean).join(' · '))}]</span>` : ''}</span></div>`).join('')
-      if (!x.items.length) return `<div class="emptysec">${head}<div class="empty">No questions uploaded yet for this section (Q${x.from}–Q${x.from + x.q - 1}). It is left out of the printed paper.</div></div>`
-      return head + x.items.map((q, i) => `${passageHtml(x.items, i)}<div class="q"><b>${q.no}.</b><span class="t">${mathToHtml(q.question)}</span>${figHtml(q)}${optLayout(q)}</div>`).join('')
+      if (!x.items.length) return `<div class="emptysec">${head}<div class="empty">No questions uploaded yet for this section${mergeNow ? '' : ` (Q${x.from}–Q${lastNo(x)})`}. It is left out of the printed paper.</div>${missHtml(x)}</div>`
+      return head + x.items.map((q, i) => `${byHead(q)}${passageHtml(x.items, i)}<div class="q"><b>${q.no}.</b><span class="t">${mathToHtml(q.question)}</span>${figHtml(q)}${optLayout(q)}</div>`).join('') + missHtml(x)
     }).join('')
     return `${first && pc.banner ? banner : ''}${draftTop(secs)}${key || !pc.note ? '' : '<div class="note">Read each question carefully. Each question has four options; choose the one correct answer and darken its bubble on the OMR sheet. There is no negative marking.</div>'}
 <div class="cols">${sections}</div>
-${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
+${count < qTotal(t, secs) ? `<div class="conf">DRAFT — ${count} of ${qTotal(t, secs)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
 <div class="conf">All questions are confidential until the test is held.</div>`
   }
   const docBody = (t, key, setIdx) => {
@@ -551,25 +577,25 @@ ${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(
     const allVerified = live(t).every(x => signoff(t, x.label))
     const id = `${cfg.prefix}-${String(t).padStart(2, '0')}${series === 'practice' ? ` (for PMT-${String(t).padStart(2, '0')})` : ''}`
     const date = cfg.tests.find(x => x.no === t)?.date
-    const setTag = ver.sets > 1 ? ` · SET ${SET_LETTERS[setIdx]}` : ''
+    const setTag = mergeNow ? ' · ALL TEACHERS' : nSets() > 1 ? ` · SET ${SET_LETTERS[setIdx]}` : ''
     const opts = q => (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(o => `<span>(${o.k}) ${mathToHtml(o.text)}</span>`).join('')
     const body = key
-      ? `<table><tr><th>Q</th><th>Ans</th><th>Topic</th><th>Level</th><th>Explanation</th></tr>${secs.flatMap(x => [`<tr><td colspan="5" class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1}</td></tr>`, ...x.items.map(q => `<tr><td>${q.no}</td><td><b>${q.answer}</b></td><td>${esc(q.topic || '')}</td><td>${esc(q.difficulty || '')}</td><td>${mathToHtml(q.explanation || '')}</td></tr>`)]).join('')}</table>`
-      : secs.map(x => (x.items.length ? s => s : s => `<div class="emptysec">${s}</div>`)(`<div class="sec">${esc(x.title)} · Q${x.from}–Q${x.from + x.q - 1} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.length || key ? '' : '<div class="empty">No questions uploaded yet for this section</div>'}${x.items.map((q, i) => `${passageHtml(x.items, i).replace('class="pass"', 'class="pass" style="font-size:12px;margin:0 0 6px;text-align:justify"')}<div class="q"><b>${q.no}.</b> ${mathToHtml(q.question)}${figHtml(q)}<div class="o">${opts(q)}</div></div>`).join('')}`)).join('')
+      ? `<table><tr><th>Q</th><th>Ans</th><th>Topic</th><th>Level</th><th>Explanation</th></tr>${secs.flatMap(x => [`<tr><td colspan="5" class="sec">${esc(x.label)} · Q${x.from}–Q${lastNo(x)}</td></tr>`, ...x.items.map(q => `<tr><td>${q.no}</td><td><b>${q.answer}</b></td><td>${esc(q.topic || '')}</td><td>${esc(q.difficulty || '')}</td><td>${mathToHtml(q.explanation || '')}</td></tr>`)]).join('')}</table>`
+      : secs.map(x => (x.items.length ? s => s : s => `<div class="emptysec">${s}</div>`)(`<div class="sec">${esc(x.title)} · Q${x.from}–Q${lastNo(x)} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.length || key ? '' : '<div class="empty">No questions uploaded yet for this section</div>'}${missHtml(x)}${x.items.map((q, i) => `${byHead(q)}${passageHtml(x.items, i).replace('class="pass"', 'class="pass" style="font-size:12px;margin:0 0 6px;text-align:justify"')}<div class="q"><b>${q.no}.</b> ${mathToHtml(q.question)}${figHtml(q)}<div class="o">${opts(q)}</div></div>`).join('')}`)).join('')
     return `<div class="lh">${logoImg}<h1>${esc(instName)}</h1>${brand.tagline ? `<div>${esc(brand.tagline)}</div>` : ''}<div>Mission Sainik 2027 · ${esc(paperName)}${esc(setTag)} ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
 ${draftTop(secs)}<div class="meta"><span>${id}${date ? ' · ' + esc(fmtShort(date)) : ''}${esc(setTag)}</span>${cfg.noMarks ? '' : `<span>Marks: ${secs.reduce((a, x) => a + x.q * x.marks, 0)}</span><span>Time: ${esc(cfg.duration)}</span>`}</div>
 ${key ? '' : '<div class="note">Each question has four options. Choose the one correct answer and darken the bubble on the OMR sheet. There is no negative marking.</div>'}
-${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
+${body}${count < qTotal(t, secs) ? `<div class="conf">DRAFT — ${count} of ${qTotal(t, secs)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
 <div class="conf">All questions are confidential until the test is held.</div>`
   }
-  const allBodies = (t, key) => Array.from({ length: ver.sets }, (_, i) => coverHtml(t, key, i) + (ver.layout === 'book' ? bookBody(t, key, i, true) : docBody(t, key, i)))
+  const allBodies = (t, key) => Array.from({ length: nSets() }, (_, i) => coverHtml(t, key, i) + (ver.layout === 'book' ? bookBody(t, key, i, true) : docBody(t, key, i)))
   // On screen (the preview) the print CSS is shown as an A4 sheet on a grey desk — margins, running header and page frame
   // that @page rules only give when printing. Print output is unchanged.
-  const previewCss = `@media print{.draft,.emptysec,.empty{display:none!important}}.draft{border:1.5pt solid #b91c1c;color:#b91c1c;font-weight:800;text-align:center;padding:2mm 3mm;margin:0 0 3mm;font-size:9.5pt;break-inside:avoid}.empty{display:block;text-align:center;font-style:italic;color:#555;border:1pt dashed #999;padding:4pt;margin:0 0 2.5mm;font-size:9.5pt}@media screen{html{background:#cfd4dc}body{margin:0;padding:18px 10px}.sheet{box-sizing:border-box;width:210mm;max-width:100%;min-height:297mm;margin:0 auto 18px;background:#fff;box-shadow:0 4px 22px rgba(15,27,46,.28);padding:16mm 12mm 14mm}
+  const previewCss = `.by{font-weight:800;font-size:.86em;letter-spacing:.03em;color:#132a4f;border-bottom:.6pt solid #c9d1de;margin:2.5mm 0 1.5mm;padding-bottom:.6mm;break-after:avoid}.empty.miss{color:#b91c1c;border-color:#f3c4bf}@media print{.draft,.emptysec,.empty{display:none!important}}.draft{border:1.5pt solid #b91c1c;color:#b91c1c;font-weight:800;text-align:center;padding:2mm 3mm;margin:0 0 3mm;font-size:9.5pt;break-inside:avoid}.empty{display:block;text-align:center;font-style:italic;color:#555;border:1pt dashed #999;padding:4pt;margin:0 0 2.5mm;font-size:9.5pt}@media screen{html{background:#cfd4dc}body{margin:0;padding:18px 10px}.sheet{box-sizing:border-box;width:210mm;max-width:100%;min-height:297mm;margin:0 auto 18px;background:#fff;box-shadow:0 4px 22px rgba(15,27,46,.28);padding:16mm 12mm 14mm}
 .run{font:700 8.5pt ${F};text-align:center;letter-spacing:.04em;color:#222;border-bottom:.7pt solid #bbb;padding-bottom:2mm;margin-bottom:4mm}.pgno{font:800 9.5pt ${F};text-align:center;margin-top:6mm;color:#111}
 .empty{display:block;text-align:center;font-style:italic;color:#8a93a6;border:1pt dashed #c9cfda;border-radius:3pt;padding:5pt;margin:0 0 2.5mm;font-size:9.5pt}}@media print{.run,.pgno{display:none}}`
   const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${brandCss}${previewCss}</style></head><body>${brand.watermark?.trim() ? `<div class="wm">${esc(brand.watermark.trim())}</div>` : ''}${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(runHead)}</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">${brand.footer?.trim() ? esc(brand.footer.trim()) + ' · ' : ''}P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
-  const docTitle = (t, key) => `${cfg.prefix}-${String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
+  const docTitle = (t, key) => `${cfg.prefix}-${String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}${mergeNow ? ' (all teachers)' : ''}`
   const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
   // Sections with no questions are left out of a printed paper; say so first.
   const okToPrint = t => {
@@ -596,7 +622,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const printOmr = t => {
     if (blocked(t)) return setMsg('🔒 Locked until the test date (embargo).')
     const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
-    w.document.write(omrHtml({ title: docTitle(t, false).replace(' Question Paper', ''), institute: institute?.name || '', total: totalQ(t), setLabel: ver.sets > 1 ? '____' : '' })); w.document.close()
+    w.document.write(omrHtml({ title: docTitle(t, false).replace(' Question Paper', ''), institute: institute?.name || '', total: mergeNow ? assemble(t).reduce((n, x) => n + x.items.length, 0) || totalQ(t) : totalQ(t), setLabel: nSets() > 1 ? '____' : '' }))   // a merged paper is longer than one set; w.document.close()
     audit('print_omr', `${series}:${t}`, null)
   }
   // ── Portable question bank (JSON): back up, share between institutes, reuse in another series ──
@@ -768,8 +794,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const myCount = byVersion ? secList.filter(x => x.uploaded_by === myName).length : secList.length   // what the logged-in teacher has set in this practice section
   const mayAdd = canUpload(testNo, sec.label)   // may add questions (setter only on Pre Mock, Mock and Practice)
   const overview = !mayAdd || (byVersion && myCount === 0 && secList.length > 0 && !settersOf(testNo, section).some(isMe))   // an admin / verifier looking at the section, not a setter with a set of their own
-  const listShown = secList.map((q, i) => ({ q, i })).filter(({ q }) => (!qLevel || q.difficulty === qLevel) && (!qSearch.trim() || [q.question, q.topic, q.explanation, q.option_a, q.option_b, q.option_c, q.option_d].join(' ').toLowerCase().includes(qSearch.trim().toLowerCase())))
-  const limN = lim.k === `${testNo}|${section}|${qSearch}|${qLevel}` ? lim.n : 10
+  const listShown = (() => { const at = new Map(secList.map((q, i) => [q.id, i])); return filterQuestions(secList, qf, { offIds: new Set(offList.map(q => q.id)) }).map(q => ({ q, i: at.get(q.id) })) })()
+  const limN = lim.k === `${testNo}|${section}|${qKey}` ? lim.n : 10
   const ready = testReady(testNo)
   const health = paperHealth(live(testNo).map(x => ({ label: x.label, q: x.q, items: get(testNo, x.label) })), qs, testNo)
   const lvl = { Easy: 0, Medium: 0, Hard: 0 }; secList.forEach(q => { if (lvl[q.difficulty] != null) lvl[q.difficulty]++ })
@@ -935,6 +961,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </div>
       </div>
 
+      {(series === 'practice' || series === 'pre') && <MissionSainikStaffBoard label={series === 'practice' ? 'Practice Maker' : 'Pre Mock'} unit={series === 'practice' ? 'set' : 'test'} storageKey={'ms_staff_board_' + series} tests={cfg.tests} currentTest={testNo} tid={tid} sectionsOf={live} settersOf={settersOf} byVersion={byVersion}
+        rows={qs} signoffs={signoffs} same={(who, name) => matchesOne(who, name, staffNames)} displayName={n => (/\s/.test(n) ? n : fullName(n))} photoOf={n => (staffMatching(n, staffNames).length === 1 ? staffMatching(n, staffNames)[0] : n)} isMobile={isMobile} />}
 
       {!showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· {health.score}% healthy{isMobile ? '' : ' · versions, preview, Word, OMR'}</span></span><span>▸</span></button>}
       {showTools && <PremiumCard title="Paper tools" subtitle={`${tid(testNo)} · health check, shuffled sets, OMR, Word and preview`}
@@ -955,8 +983,9 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
               <select className="px-input" value={ver.layout} onChange={e => setVer({ ...ver, layout: e.target.value })} style={{ marginTop: 4 }}><option value="book">Exam book style (2 columns, like printed Sainik papers)</option><option value="simple">Simple (1 column)</option></select>
             </label>
             <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: PX.sub }}>Number of sets
-              <select className="px-input" value={ver.sets} onChange={e => setVer({ ...ver, sets: Number(e.target.value) })} style={{ marginTop: 4 }}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n === 1 ? '1 (single paper)' : `${n} sets (A${n > 1 ? '–' + SET_LETTERS[n - 1] : ''})`}</option>)}</select>
+              <select className="px-input" disabled={byVersion && !!ver.merge} value={ver.sets} onChange={e => setVer({ ...ver, sets: Number(e.target.value) })} style={{ marginTop: 4 }}>{[1, 2, 3, 4].map(n => <option key={n} value={n}>{n === 1 ? '1 (single paper)' : `${n} sets (A${n > 1 ? '–' + SET_LETTERS[n - 1] : ''})`}</option>)}</select>
             </label>
+            {byVersion && <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginTop: 8, fontWeight: 700 }}><input type="checkbox" checked={!!ver.merge} onChange={e => setVer({ ...ver, merge: e.target.checked })} />Merge all teachers into one complete paper (instead of Version A, B, C)</label>}
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginTop: 8 }}><input type="checkbox" checked={ver.shuffleQ} onChange={e => setVer({ ...ver, shuffleQ: e.target.checked })} />Shuffle question order inside each section</label>
             <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginTop: 6 }}><input type="checkbox" checked={ver.shuffleOpts} onChange={e => setVer({ ...ver, shuffleOpts: e.target.checked })} />Shuffle the options A–D</label>
             <div style={{ fontSize: 11.5, color: PX.sub, marginTop: 6 }}>{ver.sets > 1 && !ver.shuffleQ && !ver.shuffleOpts ? '⚠ Several sets without shuffling will be identical. ' : ''}The same shuffle is reproduced every time you print, and each answer key matches its set.</div>
@@ -978,7 +1007,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
                     <label style={lab}>Font<select className="px-input" value={pc.font} onChange={e => setPc({ ...pc, font: e.target.value })}>{Object.entries(FONT_STACKS).map(([k, v]) => <option key={k} value={k}>{v[0]}</option>)}</select></label>
                     <label style={lab}>Size ({pc.size} pt)<input type="range" min="8" max="14" step="0.2" value={pc.size} onChange={e => setPc({ ...pc, size: Number(e.target.value) })} style={{ width: '100%' }} /></label>
                     <label style={lab}>Line spacing<select className="px-input" value={pc.line} onChange={e => setPc({ ...pc, line: Number(e.target.value) })}>{[1.1, 1.2, 1.28, 1.4, 1.6, 1.8].map(v => <option key={v} value={v}>{v}</option>)}</select></label>
-                    <label style={lab}>Options<select className="px-input" value={pc.optStyle} onChange={e => setPc({ ...pc, optStyle: e.target.value })}><option value="auto">Automatic (4-up / 2-up / stacked)</option><option value="two">Always 2 × 2</option><option value="one">Always stacked</option></select></label>
+                    <label style={lab}>Options<select className="px-input" value={pc.optStyle} onChange={e => setPc({ ...pc, optStyle: e.target.value })}><option value="auto">Automatic (2 rows where they fit)</option><option value="two">Always 2 rows (2 × 2)</option><option value="four">All 4 in one row</option><option value="one">One per line</option></select></label>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6, justifyContent: 'center' }}>{chk('rule', 'Line between columns')}{chk('banner', 'Title banner')}{chk('note', 'Instruction note')}</div>
                   </div>
                   <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 10, background: '#fff', border: `1px solid ${line}`, fontFamily: FONT_STACKS[pc.font][1], fontSize: `${pc.size}pt`, lineHeight: pc.line }}>
@@ -1028,6 +1057,29 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             })()}
           </div>
         )}
+        {byVersion && (() => {
+          const rowsM = live(testNo).map(s => ({ s, m: mergedOf(testNo, s.label) }))
+          const miss = rowsM.flatMap(r => r.m.missing.map(x => ({ ...x, sec: r.s.short })))
+          const total = rowsM.reduce((a, r) => a + r.m.items.length, 0)
+          const go = key => { mergeNow = true; setVer(v => ({ ...v, merge: true })); previewDoc(testNo, key) }
+          return (
+            <div style={{ marginTop: 14, padding: '12px 14px', borderRadius: 14, border: `1px solid ${PX.line}`, background: PX.tint }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <b style={{ fontSize: 13.5, color: PX.navy, flex: '1 1 220px' }}>Teachers' practice · {tid(testNo)} · {total} questions from {new Set(rowsM.flatMap(r => r.m.groups.map(g => g.by))).size} teachers</b>
+                <button className="px-hbtn" onClick={() => go(false)}>📚 Preview complete material</button>
+                <button className="px-hbtn" onClick={() => go(true)}>🔑 Merged key</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(230px, 1fr))', gap: 6, marginTop: 8 }}>
+                {rowsM.map(({ s, m }) => (
+                  <div key={s.label} style={{ fontSize: 12.5, background: '#fff', border: `1px solid ${m.missing.length ? '#f3c4bf' : '#bfe3cc'}`, borderRadius: 10, padding: '6px 9px' }}>
+                    <b>{s.short}</b> · {m.items.length} merged{m.groups.some(g => g.dropped) ? ` · ${m.groups.reduce((a, g) => a + g.dropped, 0)} repeat${m.groups.reduce((a, g) => a + g.dropped, 0) === 1 ? '' : 's'} left out` : ''}
+                    <div style={{ color: PX.sub }}>{m.groups.map(g => `${g.letter}: ${fullName(g.by)} ${g.count}`).join(' · ') || 'No sets yet'}</div>
+                    {m.missing.map(x => <div key={x.name} style={{ color: PX.bad, fontWeight: 700 }}>Missing: {fullName(x.name)} {x.have ? `(${x.have}/${x.q})` : '(nothing yet)'}</div>)}
+                  </div>))}
+              </div>
+              <div style={{ fontSize: 12, color: miss.length ? PX.bad : PX.ok, marginTop: 6, fontWeight: 700 }}>{miss.length ? `${miss.length} teacher set${miss.length === 1 ? ' is' : 's are'} missing or short: ${miss.map(x => `${fullName(x.name)} (${x.sec})`).join(', ')}` : 'Every allotted teacher has a full set in.'}</div>
+            </div>)
+        })()}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
           <button className="px-hbtn" onClick={() => previewDoc(testNo, false)}>👁 Preview paper</button>
           <button className="px-hbtn" onClick={() => previewDoc(testNo, true)}>👁 Preview key</button>
@@ -1200,12 +1252,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 
       <PremiumCard title="Questions in this section" subtitle={secList.length ? 'Click a question to see its options and answer' : ''}
         right={mayEdit && secList.length ? <button className="px-hbtn" onClick={() => setPicked(picked.length === secList.filter(canModify).length ? [] : secList.filter(canModify).map(q => q.id))}>{picked.length === secList.filter(canModify).length ? 'Clear selection' : 'Select all'}</button> : null}>
-        {secList.length > 5 && (
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
-            <input className="px-input" style={{ flex: '1 1 200px' }} type="search" value={qSearch} onChange={e => setQSearch(e.target.value)} placeholder="Search questions, topics, options…" aria-label="Search questions" />
-            <select className="px-input" style={{ flex: '0 1 140px' }} value={qLevel} onChange={e => setQLevel(e.target.value)} aria-label="Filter by level"><option value="">Any level</option><option>Easy</option><option>Medium</option><option>Hard</option></select>
-            {(qSearch || qLevel) && <span style={{ alignSelf: 'center', fontSize: 12.5, color: PX.sub }}>{listShown.length} of {secList.length}</span>}
-          </div>)}
+        {secList.length > 2 && (
+          <QuestionFilterBar list={secList} value={qf} onChange={setQf} shown={listShown.length} showChosen={isAdmin && !byVersion} showOffPlan={offList.length > 0} />)}
         {mayEdit && picked.length > 0 && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', padding: '8px 10px', margin: '0 0 8px', borderRadius: 12, background: '#fff6dc', border: '1px solid #e9d9b0', position: 'sticky', top: 0, zIndex: 3 }}>
             <b style={{ fontSize: 13 }}>{picked.length} selected</b>
@@ -1272,7 +1320,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
             )}
           </div>
         ))}
-        {listShown.length > limN && <div style={{ textAlign: 'center', paddingTop: 10, borderTop: `1px solid ${line}` }}><button type="button" className="px-btn ghost" onClick={() => setLim({ k: `${testNo}|${section}|${qSearch}|${qLevel}`, n: limN + 15 })}>Show {Math.min(15, listShown.length - limN)} more · {limN} of {listShown.length} shown</button></div>}
+        {listShown.length > limN && <div style={{ textAlign: 'center', paddingTop: 10, borderTop: `1px solid ${line}` }}><button type="button" className="px-btn ghost" onClick={() => setLim({ k: `${testNo}|${section}|${qKey}`, n: limN + 15 })}>Show {Math.min(15, listShown.length - limN)} more · {limN} of {listShown.length} shown</button></div>}
       </PremiumCard>
       {binCount > 0 && (!showBin ? <button type="button" className="px-btn ghost" style={{ display: 'flex', width: '100%', justifyContent: 'space-between', margin: '0 0 14px', padding: '12px 16px', textAlign: 'left' }} onClick={() => setShowBin(true)}><span><b>🗑 Recycle bin ({binCount})</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· restore deleted questions</span></span><span>▸</span></button> : <PremiumCard title={`Recycle bin (${binCount})`} subtitle="Deleted questions can be restored by the setter or an admin" right={<button className="px-hbtn" onClick={() => setShowBin(v => !v)}>{showBin ? 'Hide' : 'Show'}</button>}>
         {showBin && (bin === null ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Loading…</div> : !bin.length ? <div style={{ padding: 12, color: PX.sub, fontSize: 13 }}>Empty.</div> : bin.slice(0, 100).map(q => (

@@ -22,13 +22,15 @@ export function paperModel(papers, questions, { set = 'A', seed = '' } = {}) {
   return { sections, total: no - 1, marks: sections.reduce((n, s) => n + s.marks, 0), wanted: sections.reduce((n, s) => n + s.wanted, 0) }
 }
 
-function optionsHtml(opts) {
+// Automatic: options in 2 rows (A B / C D) wherever they fit in half the column; one per line only when an option is too long.
+// style 'two' | 'four' | 'one' forces a layout.
+export function optionsHtml(opts, { cols = 2, style = 'auto' } = {}) {
   const len = Math.max(...opts.map(o => mathPlain(o.text).length))
-  const cls = len <= 11 ? 'o4' : len <= 27 ? 'o2' : 'o1'
-  return `<div class="op ${cls}">${opts.map(o => `<span>(${o.k}) ${mathToHtml(o.text)}</span>`).join('')}</div>`
+  const cls = style === 'two' ? 'o2' : style === 'four' ? 'o4' : style === 'one' ? 'o1' : len <= (cols === 1 ? 55 : 28) ? 'o2' : 'o1'
+  return `<div class="op ${cls}">${opts.map(o => `<span><b>(${o.k})</b> ${mathToHtml(o.text)}</span>`).join('')}</div>`
 }
 
-// The question booklet. o: { institute, title, subtitle, date, minutes, columns (1|2), size (px), set, instructions }
+// The question booklet. o: { institute, title, subtitle, date, minutes, columns (1|2), size (px), set, instructions, options ('auto'|'two'|'four'|'one') }
 export function paperHtml(model, o = {}) {
   const cols = Number(o.columns) === 2 ? 2 : 1
   const size = Number(o.size) || 13
@@ -39,13 +41,13 @@ export function paperHtml(model, o = {}) {
     const qs = s.items.map((q, i) => {
       const p = q.passage && q.passage !== lastPassage ? `<div class="ps"><i>Read the passage and answer the questions that follow:</i><div>${mathToHtml(q.passage)}</div></div>` : ''
       lastPassage = q.passage || ''
-      return `${p}<div class="q"><div class="qt"><b>${s.start + i}.</b><span>${mathToHtml(q.question)}</span></div>${q.image_data && /^data:image\//.test(q.image_data) ? `<img class="oi" src="${esc(q.image_data)}" alt="Figure">` : ''}${optionsHtml(q.opts)}</div>`
+      return `${p}<div class="q"><div class="qt"><b>${s.start + i}.</b><span>${mathToHtml(q.question)}</span></div>${q.image_data && /^data:image\//.test(q.image_data) ? `<img class="oi" src="${esc(q.image_data)}" alt="Figure">` : ''}${optionsHtml(q.opts, { cols, style: o.options })}</div>`
     }).join('')
     return `<div class="sec"><div class="sh">Section ${esc(s.letter)} · ${esc(s.subject)} <small>(Q ${s.start}–${s.end} · ${s.items.length} × ${s.marksEach} = ${s.marks} marks)</small></div>${qs}</div>`
   }).join('')
   const instructions = String(o.instructions || '').split(/\r?\n/).filter(x => x.trim())
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(o.title || 'Question paper')}</title><style>
-@page{size:A4;margin:12mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@page{size:A4;margin:12mm 12mm 14mm;@bottom-center{content:"Page " counter(page);font:600 8pt Arial,sans-serif;color:#333}}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 @media screen{body{padding:14px 18px}}
 body{font-family:Georgia,'Times New Roman',serif;color:#111;font-size:${size}px;line-height:1.45;margin:0}
 .hd{text-align:center;border-bottom:2px solid #132a4f;padding-bottom:6px;margin-bottom:8px}.hd h1{margin:0;font-size:${size + 6}px;color:#132a4f}.hd h2{margin:2px 0 0;font-size:${size + 2}px}
