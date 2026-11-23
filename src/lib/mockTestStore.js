@@ -6,6 +6,7 @@
 // run the migration.
 import { supabase } from '../supabase';
 import { pickInstruction, daysToText, daysFromText } from './dutyInstruction.js';
+import { fixTestName } from './mockTestEngine.js';
 
 const TABLE = 'mock_test_results';
 const LS_KEY = 'gnsi_mock_test_results_v1';
@@ -23,14 +24,14 @@ export async function loadAll() {
     const { data, error } = await supabase.from(TABLE).select('*').order('test_no').order('id').range(from, from + PAGE - 1);
     if (error) {
       if (missingTable(error)) {
-        return { rows: lsRead(), mode: 'local', note: 'The mock_test_results table is not created in Supabase yet — run supabase/migrations/20261002_mock_test_results.sql. Until then results are saved in this browser only.' };
+        return { rows: lsRead().map(fixTestName), mode: 'local', note: 'The mock_test_results table is not created in Supabase yet — run supabase/migrations/20261002_mock_test_results.sql. Until then results are saved in this browser only.' };
       }
       throw error;
     }
     rows.push(...data);
     if (data.length < PAGE) break;
   }
-  return { rows, mode: 'cloud', note: '' };
+  return { rows: rows.map(fixTestName), mode: 'cloud', note: '' };
 }
 
 // Replace every (series, test_no, batch) present in `newRows` with the new rows.

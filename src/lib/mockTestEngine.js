@@ -17,6 +17,25 @@ export const MEGA_SERIES = 'Mega Mock Test 2026';
 // The two analyser tabs keep separate series: any series with "Mega" in its name belongs to the Mega Mock Test tab.
 export const isMegaSeries = (name) => /mega/i.test(String(name || ''));
 export const inScope = (name, scope) => (scope === 'mega') === isMegaSeries(name);
+// Default test name for a series ("Mega Mock Test 13" / "Pre Mock Test 13").
+export const defaultTestName = (series, t) => `${isMegaSeries(series) ? 'Mega' : 'Pre'} Mock Test ${t}`;
+// A saved test name that names the other kind of mock (e.g. "Pre Mock Test 13" stored in a Mega series,
+// from the old upload default) is shown with the right kind. Other names are left as they are.
+export function fixTestName(r) {
+  const n = String(r?.test_name || '');
+  if (!n) return r;
+  const mega = isMegaSeries(r.series);
+  if (mega && /\bpre\s*-?\s*mock\b/i.test(n)) return { ...r, test_name: n.replace(/\bpre(\s*-?\s*)mock\b/i, (_, sp) => `Mega${sp}Mock`) };
+  if (!mega && /\bmega\s*-?\s*mock\b/i.test(n)) return { ...r, test_name: n.replace(/\bmega(\s*-?\s*)mock\b/i, (_, sp) => `Pre${sp}Mock`) };
+  return r;
+}
+// Which kind of mock a result file name says it is: 'mega', 'pre' or '' (not stated).
+export function fileMockKind(fileName) {
+  const u = String(fileName || '').toUpperCase();
+  if (/\bMEGA\b/.test(u)) return 'mega';
+  if (/\bPRE\s*-?\s*MOCK\b/.test(u)) return 'pre';
+  return '';
+}
 
 // ─── small numeric helpers ────────────────────────────────────────────────────
 export const num = (v) => {
@@ -692,7 +711,7 @@ export function rowsFromSeed(seed, series, subjects, maxPerSubject, testNames = 
     const marks = {};
     subjects.forEach((s, i) => { marks[s] = vals[i]; });
     return {
-      series, test_no: t, test_name: testNames[t] || `Pre Mock Test ${t}`, test_date: null, batch,
+      series, test_no: t, test_name: testNames[t] || defaultTestName(series, t), test_date: null, batch,
       gcc_no: gcc, student_name: name, marks, max_marks: { ...max }, total, max_total: maxTotal, rank,
     };
   });
