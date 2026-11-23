@@ -44,7 +44,7 @@ const CFG = {
     sections: DAILY_SECTIONS, duration: 'as notified', panel: 'practice',
   },
   practice: {
-    name: 'Practice Bank', prefix: 'PMT', noun: 'Test', perTest: true, restart: true, noMarks: true, panel: 'practice',
+    name: 'Practice Bank', prefix: 'PB', noun: 'Test', perTest: true, restart: true, noMarks: true, panel: 'practice',
     tests: TESTS.map(t => ({ no: t.no, date: null, plan: t.date })),   // one practice set for EVERY Pre Mock test, on that test's planned chapter (no embargo: `plan` is only shown)
     sections: SUBJECTS.map(x => ({ label: x.label, short: x.short, q: 25, marks: 0, key: x.key, sets: PRACTICE_PANEL[x.key].sets })),
     duration: '',
@@ -488,7 +488,7 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
   const coverHtml = (t, key, setIdx) => {
     if (!brand.cover || key) return ''
     const secs = assemble(t, setIdx)
-    const id = `${series === 'practice' ? 'Practice ' : ''}${cfg.prefix}-${String(t).padStart(2, '0')}`
+    const id = `${cfg.prefix}-${String(t).padStart(2, '0')}${series === 'practice' ? ` (for PMT-${String(t).padStart(2, '0')})` : ''}`
     const date = cfg.tests.find(x => x.no === t)?.date
     const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
     const marks = secs.reduce((a, x) => a + x.q * x.marks, 0)
@@ -520,7 +520,7 @@ ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '
   const bookBody = (t, key, setIdx, first) => {
     const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
     const allVerified = live(t).every(x => signoff(t, x.label))
-    const id = `${series === 'practice' ? 'Practice ' : ''}${cfg.prefix}-${String(t).padStart(2, '0')}`
+    const id = `${cfg.prefix}-${String(t).padStart(2, '0')}${series === 'practice' ? ` (for PMT-${String(t).padStart(2, '0')})` : ''}`
     const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
     const date = cfg.tests.find(x => x.no === t)?.date
     const letter = i => String.fromCharCode(65 + i)
@@ -538,7 +538,7 @@ ${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(
   const docBody = (t, key, setIdx) => {
     const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
     const allVerified = live(t).every(x => signoff(t, x.label))
-    const id = `${series === 'practice' ? 'Practice ' : ''}${cfg.prefix}-${String(t).padStart(2, '0')}`
+    const id = `${cfg.prefix}-${String(t).padStart(2, '0')}${series === 'practice' ? ` (for PMT-${String(t).padStart(2, '0')})` : ''}`
     const date = cfg.tests.find(x => x.no === t)?.date
     const setTag = ver.sets > 1 ? ` · SET ${SET_LETTERS[setIdx]}` : ''
     const opts = q => (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(o => `<span>(${o.k}) ${mathToHtml(o.text)}</span>`).join('')
@@ -558,7 +558,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
 .run{font:700 8.5pt ${F};text-align:center;letter-spacing:.04em;color:#222;border-bottom:.7pt solid #bbb;padding-bottom:2mm;margin-bottom:4mm}.pgno{font:800 9.5pt ${F};text-align:center;margin-top:6mm;color:#111}
 .empty{display:block;text-align:center;font-style:italic;color:#8a93a6;border:1pt dashed #c9cfda;border-radius:3pt;padding:5pt;margin:0 0 2.5mm;font-size:9.5pt}}@media print{.run,.pgno{display:none}}`
   const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${brandCss}${previewCss}</style></head><body>${brand.watermark?.trim() ? `<div class="wm">${esc(brand.watermark.trim())}</div>` : ''}${brand.footer?.trim() ? `<div class="ftr">${esc(brand.footer.trim())}</div>` : ''}${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(cfg.name).toUpperCase()} TEST (MODEL SET) ●● MISSION SAINIK 2027</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
-  const docTitle = (t, key) => `${series === 'practice' ? 'Practice ' : ''}${cfg.prefix}-${String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
+  const docTitle = (t, key) => `${cfg.prefix}-${String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
   const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
   const printDoc = (t, key) => {
     if (!ready0(t)) return
