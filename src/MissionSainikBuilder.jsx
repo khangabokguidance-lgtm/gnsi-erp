@@ -518,7 +518,8 @@ ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '
     let j = i; while (j + 1 < items.length && items[j + 1].passage === q.passage) j++
     return `<div class="ins">Read the following passage and answer the questions (Q. ${q.no}${j > i ? '–' + items[j].no : ''}):</div><div class="pass">${esc(q.passage)}</div>`
   }
-  const figHtml = q => (q.image_data && /^data:image\//.test(q.image_data) ? `<div class="fig"><img src="${q.image_data}" alt="Figure"></div>` : '')
+  // Only a real base64 image is printed, and the link is escaped: a crafted image_data must never add markup to the print window.
+  const figHtml = q => (/^data:image\/(?:jpeg|png|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(String(q.image_data || '')) ? `<div class="fig"><img src="${esc(q.image_data)}" alt="Figure"></div>` : '')
   // Shown at the TOP of an incomplete paper, naming each section that has no (or too few) questions yet.
   const draftTop = secs => {
     const short = secs.filter(x => x.items.length < x.q)
