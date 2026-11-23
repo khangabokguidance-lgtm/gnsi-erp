@@ -622,7 +622,7 @@ ${body}${count < qTotal(t, secs) ? `<div class="conf">DRAFT — ${count} of ${qT
   const printOmr = t => {
     if (blocked(t)) return setMsg('🔒 Locked until the test date (embargo).')
     const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
-    w.document.write(omrHtml({ title: docTitle(t, false).replace(' Question Paper', ''), institute: institute?.name || '', total: totalQ(t), setLabel: ver.sets > 1 ? '____' : '' })); w.document.close()
+    w.document.write(omrHtml({ title: docTitle(t, false).replace(' Question Paper', ''), institute: institute?.name || '', total: mergeNow ? assemble(t).reduce((n, x) => n + x.items.length, 0) || totalQ(t) : totalQ(t), setLabel: nSets() > 1 ? '____' : '' }))   // a merged paper is longer than one set; w.document.close()
     audit('print_omr', `${series}:${t}`, null)
   }
   // ── Portable question bank (JSON): back up, share between institutes, reuse in another series ──
