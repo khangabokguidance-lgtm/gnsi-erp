@@ -6,20 +6,21 @@ import { useEffect, useRef, useState } from 'react'
 
 const DEFAULTS = { size: 0, line: 0, cols: 0, opts: 'auto', gap: 0, banner: true, note: true, wm: true, rule: true }
 
-// CSS that applies the editor's choices over the paper's own stylesheet.
+// CSS that applies the editor's choices over the paper's own stylesheet. Works on both papers:
+// Mission Sainik (.o options, .banner, .note, .ins) and Mission Foundation (.op options, .hd header, .in instructions).
 export function editorCss(o) {
   const r = []
-  if (o.size) r.push(`body,.q,.o,.pass,.ins{font-size:${o.size}pt!important}`)
-  if (o.line) r.push(`body,.q,.o{line-height:${o.line}!important}`)
+  if (o.size) r.push(`body,.q,.o,.op,.pass,.ps,.ins,.in{font-size:${o.size}pt!important}`)
+  if (o.line) r.push(`body,.q,.o,.op{line-height:${o.line}!important}`)
   if (o.cols) r.push(`.cols{column-count:${o.cols}!important}`)
   if (!o.rule) r.push('.cols{column-rule:none!important}')
   if (o.opts !== 'auto') {
     const n = { four: 4, two: 2, one: 1 }[o.opts] || 2
-    r.push(`.o{display:grid!important;grid-template-columns:repeat(${n},minmax(0,1fr))!important;gap:.4mm 3mm!important}.o span{white-space:normal!important}`)
+    r.push(`.o,.op{display:grid!important;grid-template-columns:repeat(${n},minmax(0,1fr))!important;gap:.4mm 3mm!important}.o span,.op span{white-space:normal!important}`)
   }
   if (o.gap) r.push(`.q{margin-bottom:${o.gap}mm!important}`)
-  if (!o.banner) r.push('.banner{display:none!important}')
-  if (!o.note) r.push('.note{display:none!important}')
+  if (!o.banner) r.push('.banner,.hd{display:none!important}')
+  if (!o.note) r.push('.note,.in{display:none!important}')
   if (!o.wm) r.push('.wm{display:none!important}')
   r.push('.pe-sel{outline:1.5pt dashed #c58b00;outline-offset:1.5pt}.pe-break{break-before:column}.pe-pbreak{break-before:page}@media print{.pe-sel{outline:none}}')
   return r.join('\n')
@@ -30,7 +31,7 @@ export function renumber(doc, restart) {
   let n = 0
   doc.querySelectorAll('.sec, .q').forEach(el => {
     if (el.classList.contains('sec')) { if (restart) n = 0; return }
-    const b = el.querySelector(':scope > b'); if (b) b.textContent = `${++n}.`
+    const b = el.querySelector(':scope > b, :scope > .qt > b'); if (b) b.textContent = `${++n}.`
   })
 }
 
@@ -57,7 +58,7 @@ export default function PaperPreview({ html, title, isAdmin, restart = false, on
     const d = doc(); if (!d) return
     apply()
     d.addEventListener('click', e => {
-      const q = e.target.closest?.('.q, .sec, .pass, .ins, .note'); d.querySelectorAll('.pe-sel').forEach(x => x.classList.remove('pe-sel'))
+      const q = e.target.closest?.('.q, .sec, .pass, .ps, .ins, .in, .note'); d.querySelectorAll('.pe-sel').forEach(x => x.classList.remove('pe-sel'))
       if (q) { q.classList.add('pe-sel'); setSel(q.classList.contains('q') ? 'q' : 'block') } else setSel(null)
     })
   }
@@ -65,7 +66,7 @@ export default function PaperPreview({ html, title, isAdmin, restart = false, on
   const move = dir => {
     const el = cur(); if (!el) return
     const sib = dir < 0 ? el.previousElementSibling : el.nextElementSibling
-    if (!sib || sib.classList.contains('sec')) return
+    if (!sib || sib.classList.contains('sec') || sib.classList.contains('sh')) return
     if (dir < 0) sib.before(el); else sib.after(el)
     renumber(doc(), restart)
   }

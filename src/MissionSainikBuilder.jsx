@@ -935,7 +935,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
         </div>
       </div>
 
-      {(series === 'practice' || series === 'pre') && <MissionSainikStaffBoard series={series} tests={cfg.tests} currentTest={testNo} tid={tid} sectionsOf={live} settersOf={settersOf} byVersion={byVersion}
+      {(series === 'practice' || series === 'pre') && <MissionSainikStaffBoard label={series === 'practice' ? 'Practice Maker' : 'Pre Mock'} unit={series === 'practice' ? 'set' : 'test'} storageKey={'ms_staff_board_' + series} tests={cfg.tests} currentTest={testNo} tid={tid} sectionsOf={live} settersOf={settersOf} byVersion={byVersion}
         rows={qs} signoffs={signoffs} same={(who, name) => matchesOne(who, name, staffNames)} displayName={n => (/\s/.test(n) ? n : fullName(n))} photoOf={n => (staffMatching(n, staffNames).length === 1 ? staffMatching(n, staffNames)[0] : n)} isMobile={isMobile} />}
 
       {!showTools && <button type="button" className="px-btn ghost" style={{ width: '100%', justifyContent: 'space-between', display: 'flex', margin: '0 0 12px', padding: '14px 16px', textAlign: 'left' }} onClick={() => setShowTools(true)}><span><b>🖨 Paper tools</b> <span style={{ color: PX.sub, fontSize: 12.5 }}>· {health.score}% healthy{isMobile ? '' : ' · versions, preview, Word, OMR'}</span></span><span>▸</span></button>}

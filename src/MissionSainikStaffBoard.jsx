@@ -20,13 +20,14 @@ function LevelBar({ levels, n }) {
   )
 }
 
-// series: 'practice' | 'pre'. tests: [{ no }] in scope; currentTest: the test open in the builder.
+// label: the board's heading (Practice Maker, Pre Mock, Mission Foundation); unit: 'set' | 'test'. tests: [{ no }]; currentTest: the one open now.
+// Used by Mission Sainik (Practice Maker, Pre Mock) and Mission Foundation (question maker); each passes only its own rows.
 // sectionsOf(t) → [{ label, short, q }]; settersOf(t, label) → panel names; byVersion: every setter writes a full set.
-export default function MissionSainikStaffBoard({ series, tests, currentTest, tid, sectionsOf, settersOf, byVersion, rows, signoffs, same, displayName = n => n, photoOf = n => n, isMobile }) {
+export default function MissionSainikStaffBoard({ label, unit = 'test', storageKey = 'ms_staff_board', tests, currentTest, tid, sectionsOf, settersOf, byVersion, rows, signoffs, same, displayName = n => n, photoOf = n => n, isMobile }) {
   const [scope, setScope] = useState('test')     // 'test' (the open test or set) | 'all'
-  const [open, setOpen] = useState(() => { try { return localStorage.getItem('ms_staff_board') !== 'closed' } catch { return true } })
+  const [open, setOpen] = useState(() => { try { return localStorage.getItem(storageKey) !== 'closed' } catch { return true } })
   const [how, setHow] = useState(false)
-  const toggle = v => { setOpen(v); try { localStorage.setItem('ms_staff_board', v ? 'open' : 'closed') } catch { /* storage blocked */ } }
+  const toggle = v => { setOpen(v); try { localStorage.setItem(storageKey, v ? 'open' : 'closed') } catch { /* storage blocked */ } }
   const scopeTests = scope === 'all' ? tests.map(t => t.no) : [currentTest]
   const board = useMemo(() => {
     const assignments = []
@@ -39,8 +40,7 @@ export default function MissionSainikStaffBoard({ series, tests, currentTest, ti
   }, [scope, currentTest, rows, signoffs, byVersion]) // eslint-disable-line react-hooks/exhaustive-deps
   const people = board.people
   const stars = people.filter(p => p.detector && (p.detector.id === 'star' || p.detector.id === 'hardworking'))
-  const label = series === 'practice' ? 'Practice Maker' : 'Pre Mock'
-  const scopeName = scope === 'all' ? `all ${tests.length} ${series === 'practice' ? 'sets' : 'tests'}` : tid(currentTest)
+  const scopeName = scope === 'all' ? `all ${tests.length} ${unit}s` : tid(currentTest)
 
   if (!open) return (
     <button type="button" className="px-btn ghost" onClick={() => toggle(true)} style={{ display: 'flex', width: '100%', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 12px', padding: '10px 16px', textAlign: 'left', gap: 10 }}>
@@ -55,7 +55,7 @@ export default function MissionSainikStaffBoard({ series, tests, currentTest, ti
   return (
     <PremiumCard title={`Staff board · ${label}`} subtitle={`${scopeName} · ${board.team.uploaded}/${board.team.target || '—'} questions in · effort weighted by question level`}
       right={<span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
-        <button className="px-hbtn" style={scope === 'test' ? ACTIVE : undefined} aria-pressed={scope === 'test'} onClick={() => setScope('test')}>This {series === 'practice' ? 'set' : 'test'}</button>
+        <button className="px-hbtn" style={scope === 'test' ? ACTIVE : undefined} aria-pressed={scope === 'test'} onClick={() => setScope('test')}>This {unit}</button>
         <button className="px-hbtn" style={scope === 'all' ? ACTIVE : undefined} aria-pressed={scope === 'all'} onClick={() => setScope('all')}>All</button>
         <button className="px-hbtn" aria-expanded={how} onClick={() => setHow(v => !v)}>How it scores</button>
         <button className="px-hbtn" onClick={() => toggle(false)}>Hide</button>

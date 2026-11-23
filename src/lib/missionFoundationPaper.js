@@ -25,7 +25,7 @@ export function paperModel(papers, questions, { set = 'A', seed = '' } = {}) {
 function optionsHtml(opts) {
   const len = Math.max(...opts.map(o => mathPlain(o.text).length))
   const cls = len <= 11 ? 'o4' : len <= 27 ? 'o2' : 'o1'
-  return `<div class="op ${cls}">${opts.map(o => `<span>(${o.k}) ${mathToHtml(o.text)}</span>`).join('')}</div>`
+  return `<div class="op ${cls}">${opts.map(o => `<span><b>(${o.k})</b> ${mathToHtml(o.text)}</span>`).join('')}</div>`
 }
 
 // The question booklet. o: { institute, title, subtitle, date, minutes, columns (1|2), size (px), set, instructions }
@@ -45,7 +45,7 @@ export function paperHtml(model, o = {}) {
   }).join('')
   const instructions = String(o.instructions || '').split(/\r?\n/).filter(x => x.trim())
   return `<!doctype html><html><head><meta charset="utf-8"><title>${esc(o.title || 'Question paper')}</title><style>
-@page{size:A4;margin:12mm}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+@page{size:A4;margin:12mm 12mm 14mm;@bottom-center{content:"Page " counter(page);font:600 8pt Arial,sans-serif;color:#333}}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
 @media screen{body{padding:14px 18px}}
 body{font-family:Georgia,'Times New Roman',serif;color:#111;font-size:${size}px;line-height:1.45;margin:0}
 .hd{text-align:center;border-bottom:2px solid #132a4f;padding-bottom:6px;margin-bottom:8px}.hd h1{margin:0;font-size:${size + 6}px;color:#132a4f}.hd h2{margin:2px 0 0;font-size:${size + 2}px}

@@ -11,7 +11,9 @@ import { omrHtml, wordWrap } from './lib/missionSainikPaper'
 import { mathToHtml } from './lib/mathText'
 import { paperModel, paperHtml, answerKeyHtml, nextPosition, PAPER_INSTRUCTIONS, auditPaper } from './lib/missionFoundationPaper'
 import { TestPicker } from './MissionFoundationWork'
-import { MISSION_NAME, DEFAULT_TEST_MINUTES, isSetter, settersOf } from './missionFoundationData'
+import { MISSION_NAME, DEFAULT_TEST_MINUTES, isSetter, settersOf, nameMatches, titled } from './missionFoundationData'
+import MissionSainikStaffBoard from './MissionSainikStaffBoard'
+import PaperPreview from './PaperPreview'
 
 const T_QUESTIONS = 'mission_foundation_questions'
 const INSTITUTE = 'Guidance Navodaya & Sainik Institute'
@@ -42,6 +44,8 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
   const [busy, setBusy] = useState(false)
   const [opt, setOpt] = useState({ set: 'A', columns: 2, size: 13, instructions: PAPER_INSTRUCTIONS, explanations: false })
   const [preview, setPreview] = useState(false)
+  const [editor, setEditor] = useState(false)       // admin: the advanced editor over the printable paper
+  const [allQ, setAllQ] = useState([])              // every test's questions (who, level), for the staff board
   const [tick, setTick] = useState(0)
   const reload = () => setTick(n => n + 1)
   const loading = data.id !== testId
@@ -58,6 +62,15 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
     })
     return () => { live = false }
   }, [testId, tick, flash])
+  useEffect(() => {
+    let live = true
+    fetchAll(() => supabase.from(T_QUESTIONS).select('id, test_id, subject, difficulty, explanation, uploaded_by').order('id')).then(({ data: list, error }) => { if (live && !error) setAllQ(list || []) })
+    return () => { live = false }
+  }, [tick])
+  // Staff board: Mission Foundation's own tests, papers and questions only (never Mission Sainik's).
+  const boardRows = useMemo(() => allQ.map(q => ({ ...q, test_no: String(q.test_id), section: q.subject })), [allQ])
+  const boardSignoffs = useMemo(() => Object.entries(papersByTest || {}).flatMap(([tid, ps]) => (ps || []).filter(p => p.status === 'Checked' || p.status === 'Approved').map(p => ({ test_no: String(tid), section: p.subject }))), [papersByTest])
+  const testName = id => { const t = tests.find(x => String(x.id) === String(id)); return t ? (t.title || 'Test ' + String(t.test_no).padStart(2, '0')) : '' }
 
   const model = useMemo(() => paperModel(papers, rows), [papers, rows])
   const audit = useMemo(() => auditPaper(model), [model])   // what the paper really holds: sections, options, answers, repeats
@@ -153,6 +166,7 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <Btn kind="gold" onClick={() => setPreview(v => !v)} disabled={!model.total}>{preview ? 'Hide paper' : '👁 See full paper'}</Btn>
+            {isAdmin && <Btn onClick={() => setEditor(true)} disabled={!model.total}>✏️ Advanced editor</Btn>}
             <Btn onClick={printPaper}>🖨 Print paper</Btn>
             <Btn onClick={printKey}>🔑 Answer key</Btn>
             <Btn onClick={printOmr}>🟢 OMR sheet</Btn>
@@ -170,6 +184,11 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
           </div>
         )}
       </PremiumCard>
+
+      <MissionSainikStaffBoard label={MISSION_NAME} unit="test" storageKey="mf_staff_board" tests={tests.map(t => ({ no: String(t.id) }))} currentTest={String(testId)} tid={testName}
+        sectionsOf={id => [...new Map((papersByTest[id] || []).map(p => [p.subject, { label: p.subject, q: Number(p.questions) || 0 }])).values()]}
+        settersOf={(id, subject) => (papersByTest[id] || []).filter(p => p.subject === subject).flatMap(settersOf)}
+        byVersion={false} rows={boardRows} signoffs={boardSignoffs} same={(who, name) => nameMatches(who, name)} displayName={titled} isMobile={isMobile} />
 
       <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
         {model.sections.map(s => {
@@ -245,6 +264,8 @@ export function QuestionMakerTab({ tests, testId, setTestId, papersByTest, me, i
           </PremiumCard>
         )
       })()}
+
+      {editor && <PaperPreview html={paperHtml(printModel, head)} title={`${MISSION_NAME} · ${title}${opt.set !== 'A' ? ' · Set ' + opt.set : ''}`} isAdmin={isAdmin} onClose={() => setEditor(false)} />}
 
       {preview && (
         <PremiumCard title="Full paper" subtitle="This is what prints. Change the layout here.">
