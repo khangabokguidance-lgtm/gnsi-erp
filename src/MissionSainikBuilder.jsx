@@ -21,6 +21,7 @@ import { parseQuestions, fetchAll } from './lib/missionSainikQuestions'
 import { detectQuestions } from './lib/detectQuestions'
 import { usedQuestions, pickSummary, contributors, flavours, flavourItems, flavourStatus } from './lib/missionSainikPick'
 import { makeVersion, paperHealth, csvToQuestionText, CSV_TEMPLATE, omrHtml, wordWrap, mergePaperConfig, orderedSections, FONT_STACKS } from './lib/missionSainikPaper'
+import PaperPreview from './PaperPreview'
 import { TESTS, MOCK_TESTS, SUBJECTS, PANEL, PRACTICE_PANEL, MOCK_SECTIONS, fullName, nameMatches, matchesOne } from './missionSainikData'
 
 const TABLE = 'mission_sainik_questions'
@@ -44,7 +45,7 @@ const CFG = {
     sections: DAILY_SECTIONS, duration: 'as notified', panel: 'practice',
   },
   practice: {
-    name: 'Practice Bank', prefix: 'PB', noun: 'Test', perTest: true, restart: true, noMarks: true, panel: 'practice',
+    name: 'Practice Maker', paper: 'Practice Set', prefix: 'PB', noun: 'Test', perTest: true, restart: true, noMarks: true, panel: 'practice',
     tests: TESTS.map(t => ({ no: t.no, date: null, plan: t.date })),   // one practice set for EVERY Pre Mock test, on that test's planned chapter (no embargo: `plan` is only shown)
     sections: SUBJECTS.map(x => ({ label: x.label, short: x.short, q: 25, marks: 0, key: x.key, sets: PRACTICE_PANEL[x.key].sets })),
     duration: '',
@@ -65,6 +66,9 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   // Practice bank: the admin sets how many questions each teacher sets per practice set, per subject (Panel → Practice panel).
   const cfg0 = CFG[series]
   const cfg = useMemo(() => (series === 'practice' && practiceQ ? { ...cfg0, sections: cfg0.sections.map(x => ({ ...x, q: Number(practiceQ[x.key]) || x.q })) } : cfg0), [series, practiceQ]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Printed name of the paper: practice sets are "Practice Set PB-NN", never "… Test", so they can't be mistaken for a Pre Mock test.
+  const paperName = cfg.paper || `${cfg.name} Test`
+  const runHead = `${paperName.toUpperCase()}${cfg.paper ? '' : ' (MODEL SET)'}  ●●  MISSION SAINIK 2027`
   const isPractice = series === 'practice'   // practice bank: every teacher sets their OWN set of questions for the same practice test; students get the different versions
   // Several sets on the same syllabus: every teacher writes their OWN full set; students get Version A, B, C. Always on for the practice bank; an admin switch for the Pre Mock series.
   const byVersion = isPractice || (series === 'pre' && locks?.pre_versions === 'on')
@@ -446,7 +450,10 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
   })
   const blocked = t => embargo && !isAdmin && dateOf(t) && today < dateOf(t)
   const F = FONT_STACKS[pc.font][1]
-  const docCss = `@page{size:A4;margin:14mm}body{font-family:${F};color:#111827;font-size:${(pc.size * 1.2).toFixed(1)}px;line-height:${pc.line + 0.15}}
+  // A CSS string literal (for @page margin boxes) and the page footer: the institute's footer line, then the page number.
+  const cssStr = v => String(v ?? '').replace(/[\\"]/g, m => '\\' + m).replace(/[\r\n]+/g, ' ')
+  const footStr = (pc.brand?.footer?.trim() ? `"${cssStr(pc.brand.footer.trim())}   ·   P-"` : '"P-"') + ' counter(page)'
+  const docCss = `@page{size:A4;margin:14mm 14mm 16mm;@bottom-center{content:${footStr};font:600 8pt ${F};color:#333}}body{font-family:${F};color:#111827;font-size:${(pc.size * 1.2).toFixed(1)}px;line-height:${pc.line + 0.15}}
 .lh{text-align:center;border-bottom:3px double #132a4f;padding-bottom:6px;margin-bottom:8px}.lh h1{margin:0;font-size:19px;color:#132a4f}.lh div{font-size:11.5px;color:#555}
 .meta{display:flex;justify-content:space-between;font-weight:700;margin:6px 0 8px}.note{font-size:11.5px;color:#444;margin-bottom:6px}
 .sec{background:#eef1f6;border:1px solid #c9d1de;padding:4px 8px;font-weight:700;margin:10px 0 6px}
@@ -456,8 +463,8 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
   // One document body for one version (Set A/B/…) — paper or answer key.
   // "Exam book" layout (modelled on printed Sainik School papers): two columns, small-caps section boxes, bold numbers,
   // italic (a)(b)(c)(d) options laid out 4-up / 2-up / stacked by length, running header and page badge.
-  const bookCss = `@page{size:A4;margin:16mm 12mm 14mm 12mm;@top-center{content:"${esc(cfg.name).toUpperCase()} TEST (MODEL SET)  ●●  MISSION SAINIK 2027";font:700 8.5pt ${F};color:#222;vertical-align:bottom;padding-bottom:2mm}
-@bottom-center{content:"P-" counter(page);font:800 9.5pt ${F};color:#111}}
+  const bookCss = `@page{size:A4;margin:16mm 12mm 14mm 12mm;@top-center{content:"${cssStr(runHead)}";font:700 8.5pt ${F};color:#222;vertical-align:bottom;padding-bottom:2mm}
+@bottom-center{content:${footStr};font:700 8.5pt ${F};color:#222}}
 *{-webkit-print-color-adjust:exact;print-color-adjust:exact}body{font-family:${F};color:#111;font-size:${pc.size}pt;line-height:${pc.line};margin:0}
 .banner{background:#d9dbe0;border-radius:2pt;padding:7mm 8mm;display:flex;align-items:center;gap:7mm;margin:0 0 4mm}
 .badge{width:20mm;height:20mm;border:2.2pt solid #111;border-radius:50%;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;flex:none}
@@ -465,9 +472,9 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
 .banner h1{margin:0;font:800 19pt ${F};font-variant:small-caps;letter-spacing:.02em;line-height:1.1}.banner div.s{font:600 9pt ${F};margin-top:2mm;color:#333}
 .cols{column-count:${pc.columns};column-gap:9mm;column-rule:${pc.rule && pc.columns > 1 ? '.7pt solid #333' : 'none'}}
 .sec{break-inside:avoid;break-after:avoid;border:1pt solid #111;background:#e4e5e9;text-align:center;font-variant:small-caps;font-weight:800;font-size:10.5pt;letter-spacing:.03em;padding:2pt 4pt;margin:3mm 0 2.5mm}
-.ins{font-style:italic;font-weight:700;margin:1mm 0}.q{break-inside:avoid;margin:0 0 2.2mm;padding-left:7mm;text-indent:-7mm}
-.q>b{display:inline-block;width:7mm;text-indent:0}.q .t{display:inline}.o{display:block;margin:.6mm 0 0 0;text-indent:0;padding-left:7mm;font-style:italic}
-.o.four{display:flex;gap:3mm;flex-wrap:wrap}.o.four span{flex:1 1 auto;white-space:nowrap}.o.two{display:grid;grid-template-columns:1fr 1fr;gap:.4mm 3mm}.o span{display:block}.o.one span{display:block}
+.ins{font-style:italic;font-weight:700;margin:1mm 0}.q{break-inside:avoid;margin:0 0 2.4mm;padding-left:7mm;text-indent:-7mm;orphans:3;widows:3;hyphens:none}
+.q>b{display:inline-block;width:7mm;text-indent:0}.q .t{display:inline}.o{display:block;margin:.6mm 0 0 0;text-indent:0;padding-left:7mm;font-style:normal}.o span{padding-left:5.5mm;text-indent:-5.5mm}.o span i{font-style:normal;font-weight:700}
+.o.four{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.4mm 2mm}.o.four span{white-space:nowrap}.o.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.4mm 3mm}.o span{display:block}.o.one span{display:block}
 .key{width:100%;border-collapse:collapse;font-size:9.5pt}.key td,.key th{border:.6pt solid #666;padding:1.5pt 4pt;text-align:left;vertical-align:top}.key th{background:#e4e5e9}
 .pass{text-align:justify;margin:0 0 2mm;text-indent:4mm}.fig{text-align:center;margin:1.5mm 0 1mm;text-indent:0;padding-left:0}.fig img{max-width:100%;max-height:48mm}
 .sol{padding-left:7mm;text-indent:-7mm;margin:0 0 1.6mm;break-inside:avoid}.sol>b:first-child{display:inline-block;width:7mm;text-indent:0}.sol .m{font-size:8.5pt;color:#555;font-style:italic}
@@ -494,15 +501,16 @@ table{width:100%;border-collapse:collapse}td,th{border:1px solid #999;padding:3p
     const marks = secs.reduce((a, x) => a + x.q * x.marks, 0)
     const lines = String(brand.instructions || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean)
     return `<div class="cover">${logoImg}<h1>${esc(instName)}</h1>${brand.tagline ? `<div class="tag">${esc(brand.tagline)}</div>` : '<div class="tag">&nbsp;</div>'}
-<h2>${esc(cfg.name)} Test — ${esc(id)}${esc(setTag)}</h2><div class="facts">${[date ? fmtShort(date) : '', cfg.noMarks ? '' : `${printTotal(t)} questions`, cfg.noMarks ? '' : `${marks} marks`, cfg.noMarks ? '' : cfg.duration].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ')}</div>
+<h2>${esc(paperName)} — ${esc(id)}${esc(setTag)}</h2><div class="facts">${[date ? fmtShort(date) : '', cfg.noMarks ? '' : `${printTotal(t)} questions`, cfg.noMarks ? '' : `${marks} marks`, cfg.noMarks ? '' : cfg.duration].filter(Boolean).map(esc).join(' &nbsp;·&nbsp; ')}</div>
 <table><tr><td>Candidate's name: <span></span></td><td>Roll / GCC no.: <span></span></td></tr><tr><td>Batch: <span></span></td><td>Signature: <span></span></td></tr></table>
 ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : ''}<div class="dn">DO NOT OPEN UNTIL TOLD TO DO SO</div></div>`
   }
   const optLayout = q => {
     const o = (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(x => ({ k: x.k.toLowerCase(), text: String(x.text ?? '') }))
     const len = Math.max(...o.map(x => mathPlain(x.text).length))
-    const cls = pc.optStyle === 'two' ? 'two' : pc.optStyle === 'one' ? 'one' : len <= 11 ? 'four' : len <= 27 ? 'two' : 'one'
-    return `<div class="o ${cls}">${o.map(x => `<span>(${x.k}) ${mathToHtml(x.text)}</span>`).join('')}</div>`
+    const wide = pc.columns === 1 || ver.layout !== 'book'   // a one-column page has about twice the room per option
+    const cls = pc.optStyle === 'two' ? 'two' : pc.optStyle === 'one' ? 'one' : len <= (wide ? 20 : 8) ? 'four' : len <= (wide ? 42 : 19) ? 'two' : 'one'
+    return `<div class="o ${cls}">${o.map(x => `<span><i>(${x.k})</i> ${mathToHtml(x.text)}</span>`).join('')}</div>`
   }
   // Passage header for the first question of a run that shares a passage, plus the figure under a stem.
   const passageHtml = (items, i) => {
@@ -515,7 +523,7 @@ ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '
   const draftTop = secs => {
     const short = secs.filter(x => x.items.length < x.q)
     if (!short.length) return ''
-    return `<div class="draft">INCOMPLETE PAPER — ${short.map(x => `${esc(x.title || x.label)}: ${x.items.length ? `${x.items.length} of ${x.q}` : 'no'} questions`).join(' · ')}. Do not use until every section is uploaded.</div>`
+    return `<div class="draft">INCOMPLETE PAPER — ${short.map(x => `${esc(x.title || x.label)}: ${x.items.length ? `${x.items.length} of ${x.q}` : 'no'} questions`).join(' · ')}. Shown here only: the printed paper leaves these sections out.</div>`
   }
   const bookBody = (t, key, setIdx, first) => {
     const secs = assemble(t, setIdx); const count = secs.reduce((a, x) => a + x.items.length, 0)
@@ -524,11 +532,13 @@ ${lines.length ? `<ol>${lines.map(x => `<li>${esc(x)}</li>`).join('')}</ol>` : '
     const setTag = ver.sets > 1 ? ` · Set ${SET_LETTERS[setIdx]}` : ''
     const date = cfg.tests.find(x => x.no === t)?.date
     const letter = i => String.fromCharCode(65 + i)
-    const banner = `<div class="banner">${logoImg}<div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : 'MODEL SET'}</i></div><div><h1>${esc(instName)}<br>${esc(cfg.name)} Test — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1>${brand.tagline ? `<div class="bn-t">${esc(brand.tagline)}</div>` : ''}<div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${printTotal(t)} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
-    const sections = secs.map((x, si) => {
-      const head = `<div class="sec">Section–${letter(si)}: ${esc(x.title)}</div>${x.instruction && !key ? `<div class="ins">${esc(x.instruction)}</div>` : ''}`
+    const banner = `<div class="banner">${logoImg}<div class="badge"><b>${cfg.noun === 'Set' ? t : String(t).padStart(2, '0')}</b><i>${key ? 'KEY' : cfg.paper ? 'PRACTICE' : 'MODEL SET'}</i></div><div><h1>${esc(instName)}<br>${esc(paperName)} — ${esc(id)}${esc(setTag)}${key ? ' · Answer Key' : ''}</h1>${brand.tagline ? `<div class="bn-t">${esc(brand.tagline)}</div>` : ''}<div class="s">Mission Sainik 2027${date ? ' · ' + esc(fmtShort(date)) : ''}${cfg.noMarks ? '' : ` · ${printTotal(t)} questions · ${secs.reduce((a, x) => a + x.q * x.marks, 0)} marks · ${esc(cfg.duration)}`}</div></div></div>`
+    let li = 0   // section letters count only the sections that are printed (an empty one is left out)
+    const sections = secs.map(x => {
+      const head = `<div class="sec">${x.items.length ? `Section–${letter(li++)}: ` : ''}${esc(x.title)}</div>${x.instruction && !key ? `<div class="ins">${esc(x.instruction)}</div>` : ''}`
       if (key) return head + x.items.map(q => `<div class="sol"><b>${q.no}.</b><span><b>(${q.answer.toLowerCase()})</b> ${mathToHtml(q.explanation || '')}${q.topic || q.difficulty ? ` <span class="m">[${esc([q.topic, q.difficulty].filter(Boolean).join(' · '))}]</span>` : ''}</span></div>`).join('')
-      return head + (x.items.length ? '' : `<div class="empty">No questions uploaded yet for this section (Q${x.from}–Q${x.from + x.q - 1})</div>`) + x.items.map((q, i) => `${passageHtml(x.items, i)}<div class="q"><b>${q.no}.</b><span class="t">${mathToHtml(q.question)}</span>${figHtml(q)}${optLayout(q)}</div>`).join('')
+      if (!x.items.length) return `<div class="emptysec">${head}<div class="empty">No questions uploaded yet for this section (Q${x.from}–Q${x.from + x.q - 1}). It is left out of the printed paper.</div></div>`
+      return head + x.items.map((q, i) => `${passageHtml(x.items, i)}<div class="q"><b>${q.no}.</b><span class="t">${mathToHtml(q.question)}</span>${figHtml(q)}${optLayout(q)}</div>`).join('')
     }).join('')
     return `${first && pc.banner ? banner : ''}${draftTop(secs)}${key || !pc.note ? '' : '<div class="note">Read each question carefully. Each question has four options; choose the one correct answer and darken its bubble on the OMR sheet. There is no negative marking.</div>'}
 <div class="cols">${sections}</div>
@@ -544,8 +554,8 @@ ${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(
     const opts = q => (q.opts || ['A', 'B', 'C', 'D'].map(k => ({ k, text: q['option_' + k.toLowerCase()] }))).map(o => `<span>(${o.k}) ${mathToHtml(o.text)}</span>`).join('')
     const body = key
       ? `<table><tr><th>Q</th><th>Ans</th><th>Topic</th><th>Level</th><th>Explanation</th></tr>${secs.flatMap(x => [`<tr><td colspan="5" class="sec">${esc(x.label)} · Q${x.from}–Q${x.from + x.q - 1}</td></tr>`, ...x.items.map(q => `<tr><td>${q.no}</td><td><b>${q.answer}</b></td><td>${esc(q.topic || '')}</td><td>${esc(q.difficulty || '')}</td><td>${mathToHtml(q.explanation || '')}</td></tr>`)]).join('')}</table>`
-      : secs.map(x => `<div class="sec">${esc(x.title)} · Q${x.from}–Q${x.from + x.q - 1} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.length || key ? '' : '<div class="empty">No questions uploaded yet for this section</div>'}${x.items.map((q, i) => `${passageHtml(x.items, i).replace('class="pass"', 'class="pass" style="font-size:12px;margin:0 0 6px;text-align:justify"')}<div class="q"><b>${q.no}.</b> ${mathToHtml(q.question)}${figHtml(q)}<div class="o">${opts(q)}</div></div>`).join('')}`).join('')
-    return `<div class="lh">${logoImg}<h1>${esc(instName)}</h1>${brand.tagline ? `<div>${esc(brand.tagline)}</div>` : ''}<div>Mission Sainik 2027 · ${cfg.name} Test${esc(setTag)} ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
+      : secs.map(x => (x.items.length ? s => s : s => `<div class="emptysec">${s}</div>`)(`<div class="sec">${esc(x.title)} · Q${x.from}–Q${x.from + x.q - 1} — ${x.q} question(s)${cfg.noMarks ? '' : ' × ' + x.marks + ' mark(s)'}</div>${x.items.length || key ? '' : '<div class="empty">No questions uploaded yet for this section</div>'}${x.items.map((q, i) => `${passageHtml(x.items, i).replace('class="pass"', 'class="pass" style="font-size:12px;margin:0 0 6px;text-align:justify"')}<div class="q"><b>${q.no}.</b> ${mathToHtml(q.question)}${figHtml(q)}<div class="o">${opts(q)}</div></div>`).join('')}`)).join('')
+    return `<div class="lh">${logoImg}<h1>${esc(instName)}</h1>${brand.tagline ? `<div>${esc(brand.tagline)}</div>` : ''}<div>Mission Sainik 2027 · ${esc(paperName)}${esc(setTag)} ${key ? '· ANSWER KEY (CONFIDENTIAL)' : ''}</div></div>
 ${draftTop(secs)}<div class="meta"><span>${id}${date ? ' · ' + esc(fmtShort(date)) : ''}${esc(setTag)}</span>${cfg.noMarks ? '' : `<span>Marks: ${secs.reduce((a, x) => a + x.q * x.marks, 0)}</span><span>Time: ${esc(cfg.duration)}</span>`}</div>
 ${key ? '' : '<div class="note">Each question has four options. Choose the one correct answer and darken the bubble on the OMR sheet. There is no negative marking.</div>'}
 ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${printTotal(t)} questions uploaded so far.</div>` : ''}${allVerified ? '' : '<div class="conf">NOT FULLY VERIFIED — some sections have no verification sign-off.</div>'}
@@ -554,19 +564,24 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
   const allBodies = (t, key) => Array.from({ length: ver.sets }, (_, i) => coverHtml(t, key, i) + (ver.layout === 'book' ? bookBody(t, key, i, true) : docBody(t, key, i)))
   // On screen (the preview) the print CSS is shown as an A4 sheet on a grey desk — margins, running header and page frame
   // that @page rules only give when printing. Print output is unchanged.
-  const previewCss = `.draft{border:1.5pt solid #b91c1c;color:#b91c1c;font-weight:800;text-align:center;padding:2mm 3mm;margin:0 0 3mm;font-size:9.5pt;break-inside:avoid}.empty{display:block;text-align:center;font-style:italic;color:#555;border:1pt dashed #999;padding:4pt;margin:0 0 2.5mm;font-size:9.5pt}@media screen{html{background:#cfd4dc}body{margin:0;padding:18px 10px}.sheet{box-sizing:border-box;width:210mm;max-width:100%;min-height:297mm;margin:0 auto 18px;background:#fff;box-shadow:0 4px 22px rgba(15,27,46,.28);padding:16mm 12mm 14mm}
+  const previewCss = `@media print{.draft,.emptysec,.empty{display:none!important}}.draft{border:1.5pt solid #b91c1c;color:#b91c1c;font-weight:800;text-align:center;padding:2mm 3mm;margin:0 0 3mm;font-size:9.5pt;break-inside:avoid}.empty{display:block;text-align:center;font-style:italic;color:#555;border:1pt dashed #999;padding:4pt;margin:0 0 2.5mm;font-size:9.5pt}@media screen{html{background:#cfd4dc}body{margin:0;padding:18px 10px}.sheet{box-sizing:border-box;width:210mm;max-width:100%;min-height:297mm;margin:0 auto 18px;background:#fff;box-shadow:0 4px 22px rgba(15,27,46,.28);padding:16mm 12mm 14mm}
 .run{font:700 8.5pt ${F};text-align:center;letter-spacing:.04em;color:#222;border-bottom:.7pt solid #bbb;padding-bottom:2mm;margin-bottom:4mm}.pgno{font:800 9.5pt ${F};text-align:center;margin-top:6mm;color:#111}
 .empty{display:block;text-align:center;font-style:italic;color:#8a93a6;border:1pt dashed #c9cfda;border-radius:3pt;padding:5pt;margin:0 0 2.5mm;font-size:9.5pt}}@media print{.run,.pgno{display:none}}`
-  const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${brandCss}${previewCss}</style></head><body>${brand.watermark?.trim() ? `<div class="wm">${esc(brand.watermark.trim())}</div>` : ''}${brand.footer?.trim() ? `<div class="ftr">${esc(brand.footer.trim())}</div>` : ''}${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(cfg.name).toUpperCase()} TEST (MODEL SET) ●● MISSION SAINIK 2027</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
+  const shell = (bodies, title, auto) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title)}</title><style>${ver.layout === 'book' ? bookCss : docCss}${brandCss}${previewCss}</style></head><body>${brand.watermark?.trim() ? `<div class="wm">${esc(brand.watermark.trim())}</div>` : ''}${bodies.map((b, i) => `<div class="sheet"><div class="run">${esc(runHead)}</div><div class="${i < bodies.length - 1 ? 'pb' : ''}">${b}</div><div class="pgno">${brand.footer?.trim() ? esc(brand.footer.trim()) + ' · ' : ''}P-${i + 1}</div></div>`).join('')}${auto ? '<script>window.onload=()=>window.print()</script>' : ''}</body></html>`
   const docTitle = (t, key) => `${cfg.prefix}-${String(t).padStart(2, '0')} ${key ? 'Answer Key' : 'Question Paper'}`
   const ready0 = t => { if (blocked(t)) { setMsg(`🔒 Locked until ${fmtShort(dateOf(t))} (embargo). Ask an admin.`); return false } if (!live(t).some(x => get(t, x.label).length)) { setMsg('❌ No questions uploaded for this test yet.'); return false } return true }
+  // Sections with no questions are left out of a printed paper; say so first.
+  const okToPrint = t => {
+    const empty = printLive(t).filter(sc => !get(t, sc.label).length).map(sc => sc.title || sc.label)
+    return !empty.length || window.confirm(`${empty.join(', ')} ${empty.length > 1 ? 'have' : 'has'} no questions yet and will be left out of the printed paper. Print anyway?`)
+  }
   const printDoc = (t, key) => {
-    if (!ready0(t)) return
+    if (!ready0(t) || (!key && !okToPrint(t))) return
     audit(key ? 'print_key' : 'print_paper', `${series}:${t}`, { verified: live(t).every(x => signoff(t, x.label)), sets: ver.sets, shuffled: ver.shuffleQ || ver.shuffleOpts })
     const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print')
     w.document.write(shell(allBodies(t, key), docTitle(t, key), true)); w.document.close()
   }
-  const previewDoc = (t, key) => { if (!ready0(t)) return; setPreview({ html: shell(allBodies(t, key), docTitle(t, key), false), title: docTitle(t, key) }) }
+  const previewDoc = (t, key) => { if (!ready0(t)) return; setPreview({ html: shell(allBodies(t, key), docTitle(t, key), false), title: docTitle(t, key), t, key }) }
   const exportWord = (t, key) => {
     if (!ready0(t)) return
     setMathStacked(false)
@@ -832,7 +847,7 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
       <div className="msb-wrap">
         <div className={'msb-hero' + (ready ? ' ready' : '')}>
           <div className="l">
-            <div className="k">{cfg.name} {cfg.noun === 'Set' ? 'bank' : 'builder'}</div>
+            <div className="k">{isPractice ? 'Practice Maker · practice sets, not Pre Mock tests' : `${cfg.name} ${cfg.noun === 'Set' ? 'bank' : 'builder'}`}</div>
             <h2>{tid(testNo)}{ready && <span className="rd"><Icon name="check" size={14} stroke={2.6} />Ready to print</span>}</h2>
             <div className="chips">
               {(dateOf(testNo) || planDate(testNo)) && <span className="ch"><Icon name="schedule" size={15} />{series === 'practice' ? 'Test on ' : ''}{new Date((dateOf(testNo) || planDate(testNo)) + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>}
@@ -1267,16 +1282,8 @@ ${body}${count < printTotal(t) ? `<div class="conf">DRAFT — ${count} of ${prin
           </div>)))}
       </PremiumCard>)}
       {preview && (
-        <div className="msx-overlay" onClick={() => setPreview(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12 }}>
-          <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Paper preview" onClick={e => e.stopPropagation()} style={{ width: 'min(900px,100%)', height: '88vh', background: '#fff', borderRadius: 18, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: `1px solid ${line}` }}>
-              <b style={{ flex: 1, fontSize: 14 }}>{preview.title}</b>
-              <button className="px-btn gold" onClick={() => { const w = window.open('', '_blank'); if (w) { w.document.write(preview.html.replace('</body>', '<script>window.onload=()=>window.print()</script></body>')); w.document.close() } }}>🖨 Print</button>
-              <button className="px-btn ghost" onClick={() => setPreview(null)}>Close</button>
-            </div>
-            <iframe title="Paper preview" srcDoc={preview.html} style={{ flex: 1, border: 0, width: '100%', background: '#eef1f6' }} sandbox="" />
-          </div>
-        </div>
+        <PaperPreview html={preview.html} title={preview.title} isAdmin={isAdmin} restart={!!cfg.restart} onClose={() => setPreview(null)}
+          onPrint={out => { if (!preview.key && !okToPrint(preview.t)) return; audit(preview.key ? 'print_key' : 'print_paper', `${series}:${preview.t}`, { from: 'preview' }); const w = window.open('', '_blank'); if (!w) return setMsg('❌ Allow pop-ups to print'); w.document.write(out.replace('</body>', '<script>window.onload=()=>window.print()</script></body>')); w.document.close() }} />
       )}
       {studio != null && secList.some(x => x.id === studio) && (
         <QuestionEditor list={secList} startIndex={secList.findIndex(x => x.id === studio)} startNo={startOf(section)} title={`${sec.title || section}`} subtitle={`${tid(testNo)} · ${section}`}
