@@ -10,7 +10,7 @@ test('view tabs open on read access alone', () => {
   ;['studymaterial', 'classmaterial', 'teachingaids', 'studylockers', 'questionbankviewer', 'modelsets'].forEach((id) => assert.equal(hubTabAllowed(id, R), true, id))
 })
 test('create / run tabs need edit-type rights as well as read', () => {
-  assert.deepEqual(MANAGE_TABS, ['questionbank', 'entrance', 'setmaker'])
+  assert.deepEqual(MANAGE_TABS, ['questionbank', 'entrance', 'setmaker', 'testmaker'])
   MANAGE_TABS.forEach((id) => { assert.equal(hubTabAllowed(id, R), false, id); assert.equal(hubTabAllowed(id, RW), true, id); assert.equal(hubTabAllowed(id, { read: true, add: true }), true); assert.equal(hubTabAllowed(id, { read: true, delete: true }), true) })
 })
 test('hub menu shows only when a tab is allowed', () => {

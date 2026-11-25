@@ -22,6 +22,7 @@ const QuestionBankViewer = lazy(() => import('./QuestionBankViewer'));
 const Entrance = lazy(() => import('./Entrance'));
 const ModelSets = lazy(() => import('./ModelSets'));
 const SetMaker = lazy(() => import('./SetMaker'));
+const TestMaker = lazy(() => import('./TestMaker'));
 const ClassMaterial = lazy(() => import('./ClassMaterial'));
 
 const MODULES = {
@@ -33,13 +34,14 @@ const MODULES = {
   entrance:           { label: 'Entrance Exam', desc: 'Run entrance exams',        short: 'Entrance' },
   modelsets:          { label: 'Model Sets', desc: 'Take a practice paper',           short: 'Model Sets' },
   setmaker:           { label: 'Model Set Maker', desc: 'Print papers and answer sheets',      short: 'Set Maker' },
+  testmaker:          { label: 'Test & Practice Maker', desc: 'Sainik tests, practice sets, Word and PDF', short: 'Test Maker' },
   classmaterial:      { label: 'Class Material', desc: 'Class files from your teachers',       short: 'Class Material' },
 };
 
 const FLOW = [
   { stage: 'Learn', ids: ['studymaterial', 'classmaterial', 'teachingaids', 'studylockers'] },
   { stage: 'Practice', ids: ['questionbank', 'questionbankviewer'] },
-  { stage: 'Test', ids: ['entrance', 'modelsets', 'setmaker'] },
+  { stage: 'Test', ids: ['entrance', 'modelsets', 'setmaker', 'testmaker'] },
 ];
 
 
@@ -54,6 +56,7 @@ const HELP = {
   entrance: { what: 'Runs a whole entrance exam from applications to results.', steps: ['Click "New exam" and fill the name and date.', 'Follow the steps in order: Applications, Question Paper, Hall Tickets, Exam Day, Results.', 'The Overview shows the next thing to do.'] },
   modelsets: { what: 'Full practice papers you take on screen with a timer and OMR sheet.', steps: ['Open a set.', 'Answer the questions before the timer ends.', 'See your section-wise score at the end.'] },
   setmaker: { what: 'Builds a fresh printed booklet with answer key and OMR sheet.', steps: ['Choose the questions or topics.', 'Generate the paper.', 'Download or print it.'] },
+  testmaker: { what: 'Makes AISSEE (Sainik) Class VI practice sets, tests and a 150-question Monthly Test, with answer key, in print or Word.', steps: ['Open Practice, Test builder or Test series.', 'Choose the sections, chapters and years.', 'Print / Save as PDF, or download the Word (.docx) file.'] },
 };
 const helpKey = (id) => `gnsi_lh_help_${id}`;
 function SectionHelp({ id }) {
@@ -295,6 +298,7 @@ export default function LearningHub({ currentUser, tab, onNavigate, perms, canAc
       case 'entrance': return <Entrance {...common} perms={perms('entrance')} />;
       case 'modelsets': return <ModelSets {...common} perms={perms('modelsets')} />;
       case 'setmaker': return <SetMaker {...common} perms={perms('setmaker')} />;
+      case 'testmaker': return <TestMaker />;
       case 'classmaterial': return <ClassMaterial {...common} perms={perms('classmaterial')} />;
       default: return null;
     }

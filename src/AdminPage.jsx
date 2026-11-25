@@ -38,6 +38,7 @@ const ALL_MODULES = [
   { key: 'entrance',         label: 'Entrance Exam',      icon: '🏆'  },
   { key: 'modelsets',        label: 'Model Sets',         icon: '🗂️' },
   { key: 'setmaker',         label: 'Model Set Maker',    icon: '🖨️' },
+  { key: 'testmaker',        label: 'Test & Practice Maker', icon: '📝' },
   { key: 'studymaterial',    label: 'Study Materials',    icon: '📖'  },
   { key: 'classmaterial',    label: 'Class Material (view-only)', icon: '👁️' },
   { key: 'studylockers',     label: 'Study Lockers',      icon: '🗃️' },
