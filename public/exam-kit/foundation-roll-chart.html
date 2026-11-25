@@ -683,6 +683,8 @@ rollCfg=Object.assign(rollCfg,load('rollcfg')||{});
 const savedStu=load('stu');$('stuText').value=savedStu||SAMPLE;
 drawRooms();showStuInfo();showLogo();
 
+window.addEventListener('message',e=>{if(e.source!==window.parent||window.parent===window)return;const d=e.data;if(!d||d.type!=='gnsi-exam')return;[['exam',d.rollTitle],['edate',d.date],['etime',d.time]].forEach(([id,v])=>{if(v==null||v==='')return;$(id).value=v;store('f_'+id,v)});result=null;$('genInfo').innerHTML='<span class="msg ok" style="display:inline-block;margin:0">'+esc(d.rollTitle)+' is set. Press Smart arrange or Make roll chart.</span>';try{e.source.postMessage({type:'gnsi-exam-ok',title:d.rollTitle},'*')}catch(x){}});
+
 window.addEventListener('message',e=>{if(e.source!==window.parent||window.parent===window)return;const d=e.data;if(!d||d.type!=='gnsi-roster'||typeof d.csv!=='string')return;$('stuText').value=d.csv;store('stu',d.csv);result=null;showStuInfo();try{e.source.postMessage({type:'gnsi-roster-ok',n:parseStudents(d.csv).list.length},'*')}catch(x){}});
 </script>
 </body>

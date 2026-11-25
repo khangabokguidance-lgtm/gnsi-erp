@@ -146,7 +146,7 @@ table.ex-t td:first-child,table.ex-t th:first-child{text-align:left;padding-left
 
 <section id="t-setup">
  <div class="card"><h2>Choose the paper</h2><p class="h">Each paper's sections and question numbers come from the question booklet. Change anything below and it is remembered in this browser.</p>
-  <div class="papers" id="paperBtns"></div></div>
+  <div class="papers" id="paperBtns"></div><p class="note" id="testTag" style="margin:10px 0 0"></p></div>
  <div class="card"><h2>Exam details on the sheet</h2>
   <div class="grid2">
    <label class="f">Exam title<input id="f_title"></label>
@@ -328,6 +328,8 @@ $("logoTop").src=LOGO;
 let cur=LS.get("paper","udaan"); if(!DEF[cur])cur="udaan";
 let alloc=LS.get("alloc",null);
 function cfg(p=cur){const s=LS.get("cfg:"+p,{});const d=DEF[p];return Object.assign({},d,s,{key:undefined})}
+function TK(){const t=LS.get("test","");return t?t+":":""}
+function showTest(){const el=$("testTag");if(!el)return;const t=LS.get("testName","");el.innerHTML=t?"From the ERP test series: <b>"+esc(t)+"</b>. The answer key and saved marks belong to this test.":""}
 function saveCfg(o){const s=LS.get("cfg:"+cur,{});Object.assign(s,o);LS.set("cfg:"+cur,s)}
 function sections(c=cfg()){
  const out=[];let q=1;
@@ -335,8 +337,8 @@ function sections(c=cfg()){
   out.push({L:"ABCDEFGHIJKLMNOP"[i],name:m[0]||("Section "+(i+1)),n,mk,start:q,end:q+n-1});q+=n});
  return out}
 const totalQ=secs=>secs.reduce((a,s)=>a+s.n,0);
-function getKey(p=cur){const k=LS.get("key:"+p,null);let s=k!=null?k:(DEF[p].key||"");const n=totalQ(sections(cfg(p)));s=s.padEnd(n,"-").slice(0,n);return s}
-function setKey(s){LS.set("key:"+cur,s)}
+function getKey(p=cur){const k=LS.get("key:"+TK()+p,null);let s=k!=null?k:(TK()?"":(DEF[p].key||""));const n=totalQ(sections(cfg(p)));s=s.padEnd(n,"-").slice(0,n);return s}
+function setKey(s){LS.set("key:"+TK()+cur,s)}
 
 /* ---------- students ---------- */
 function parseStu(t){return t.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>{const m=l.match(/("([^"]|"")*"|[^,]*)(,|$)/g).map(x=>x.replace(/,$/,"").replace(/^"|"$/g,"").replace(/""/g,'"').trim());return m}).filter(r=>r[1]&&!/^name$/i.test(r[1])&&!/^roll|^gcc/i.test(r[0])).map(r=>({gcc:r[0],name:r[1],cls:r[2]||""}))}
@@ -488,7 +490,7 @@ const setAt=(s,i,ch)=>s.slice(0,i)+ch+s.slice(i+1);
 function paintKey(){const k=getKey();$("keyTitle").textContent="Answer key · "+DEF[cur].name;const n=k.length,f=k.replace(/-/g,"").length;$("keyCount").textContent=`${f} of ${n} answers set`+(f<n?` · ${n-f} empty`:"");
  igrid($("keyGrid"),k.split(""),(q,L)=>{setKey(setAt(getKey(),q-1,L));paintKey()})}
 keyNav($("keyGrid"),()=>getKey(),(q,L)=>{setKey(setAt(getKey(),q-1,L));paintKey()});
-$("keyReset").onclick=()=>{LS.set("key:"+cur,null);paintKey()};
+$("keyReset").onclick=()=>{LS.set("key:"+TK()+cur,null);paintKey()};
 $("keyCopy").onclick=()=>{const s=getKey();navigator.clipboard&&navigator.clipboard.writeText(s);prompt0("Key (one letter per question, - = empty):",s)};
 $("keyPaste").onclick=()=>{const s=window.prompt("Paste the key: one letter per question in order, use - for empty. Spaces and numbers are ignored.");if(s==null)return;const t=s.toUpperCase().replace(/[^ABCD-]/g,"");setKey(t);paintKey()};
 function prompt0(m,s){window.prompt(m,s)}
@@ -496,7 +498,7 @@ $("keyPrint").onclick=()=>{const c=cfg();go("sheets");$("sheets").innerHTML=shee
 
 /* ---------- check tab ---------- */
 let resp="";
-function resAll(){return LS.get("res:"+cur,{})}
+function resAll(){return LS.get("res:"+TK()+cur,{})}
 function paintChkStu(){const l=stuFor();const r=resAll();const v=$("chkStu").value;$("chkStu").innerHTML=l.map(s=>`<option value="${esc(s.gcc)}">${r[s.gcc]?"✓ ":""}${esc(rollOf(s))} · ${esc(s.name)}</option>`).join("");if(v&&l.some(s=>s.gcc===v))$("chkStu").value=v;loadResp()}
 function loadResp(){const r=resAll()[$("chkStu").value];const n=totalQ(sections());resp=(r&&r.ans||"").padEnd(n,"-").slice(0,n);$("chkGrid").dataset.cur=1;paintChk()}
 function score(ans){const s=sections(),k=getKey();return s.map(x=>{let c=0,w=0,u=0,nk=0;for(let q=x.start;q<=x.end;q++){const a=ans[q-1],kk=k[q-1];if(!kk||kk==="-"){nk++;continue}if(!a||a==="-")u++;else if(a===kk)c++;else w++}return{L:x.L,name:x.name,c,w,u,nk,m:c*x.mk,max:(x.n-nk)*x.mk}})}
@@ -508,7 +510,7 @@ $("chkStu").onchange=loadResp;
 $("chkClear").onclick=()=>{resp="".padEnd(totalQ(sections()),"-");paintChk()};
 function step(d){const o=$("chkStu").options;const i=$("chkStu").selectedIndex+d;if(i>=0&&i<o.length){$("chkStu").selectedIndex=i;loadResp()}}
 $("chkPrev").onclick=()=>step(-1);$("chkNext").onclick=()=>step(1);
-$("chkSave").onclick=()=>{const g=$("chkStu").value;if(!g)return;const r=resAll();r[g]={ans:resp,at:Date.now()};LS.set("res:"+cur,r);paintRes();const i=$("chkStu").selectedIndex;paintChkStu();$("chkStu").selectedIndex=Math.min(i+1,$("chkStu").options.length-1);loadResp()};
+$("chkSave").onclick=()=>{const g=$("chkStu").value;if(!g)return;const r=resAll();r[g]={ans:resp,at:Date.now()};LS.set("res:"+TK()+cur,r);paintRes();const i=$("chkStu").selectedIndex;paintChkStu();$("chkStu").selectedIndex=Math.min(i+1,$("chkStu").options.length-1);loadResp()};
 function resRows(){const r=resAll(),s=sections();const l=stuFor().filter(x=>r[x.gcc]);return l.map(x=>{const sc=score(r[x.gcc].ans);return{x,sc,tot:sc.reduce((a,b)=>a+b.m,0),max:sc.reduce((a,b)=>a+b.max,0)}}).sort((a,b)=>b.tot-a.tot)}
 function paintRes(){const s=sections(),rows=resRows();let rank=0,prev=null;
  $("resTable").innerHTML=`<tr><th>Rank</th><th>Roll No.</th><th>Name</th>${s.map(x=>`<th>${x.L} · ${esc(x.name)}</th>`).join("")}<th>Total</th></tr>`+
@@ -518,7 +520,7 @@ $("resCsv").onclick=()=>{const s=sections(),rows=resRows();const h=["Rank","Roll
  const csv=[h,...data].map(r=>r.map(v=>/[",\n]/.test(String(v))?'"'+String(v).replace(/"/g,'""')+'"':v).join(",")).join("\n");
  const a=document.createElement("a");a.href=URL.createObjectURL(new Blob(["﻿"+csv],{type:"text/csv"}));a.download=`OMR_marks_${DEF[cur].name}.csv`;a.click()};
 $("resPrint").onclick=()=>{const w=window.open("","_blank");if(!w)return;w.document.write(`<title>Marks · ${esc(DEF[cur].name)}</title><style>body{font:12px Arial;margin:14mm}h2{margin:0 0 4px}table{border-collapse:collapse;width:100%}td,th{border:1px solid #888;padding:4px 6px;text-align:left}</style><h2>GNSI · ${esc(cfg().title)}</h2><p>${esc(cfg().batch)} · ${esc(cfg().date)} · Marks list</p><table>${$("resTable").innerHTML}</table>`);w.document.close();w.print()};
-$("resClear").onclick=()=>{if(confirm("Delete all saved marks for "+DEF[cur].name+"?")){LS.set("res:"+cur,{});paintRes();paintChkStu()}};
+$("resClear").onclick=()=>{if(confirm("Delete all saved marks for "+DEF[cur].name+"?")){LS.set("res:"+TK()+cur,{});paintRes();paintChkStu()}};
 
 /* ---------- tabs ---------- */
 function go(t){document.querySelectorAll("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));["setup","sheets","key","check"].forEach(x=>$("t-"+x).classList.toggle("hide",x!==t));
@@ -527,6 +529,8 @@ function go(t){document.querySelectorAll("#tabs button").forEach(b=>b.classList.
 document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>go(b.dataset.t));
 function refreshAll(){paintClsList();paintPapers();loadForm();picked=new Set(stuFor().map(s=>s.gcc));$("sheets").innerHTML=""}
 refreshAll();showAlloc();
+
+showTest();window.addEventListener("message",e=>{if(e.source!==window.parent||window.parent===window)return;const d=e.data;if(!d||d.type!=="gnsi-exam")return;LS.set("test",d.tag||"");LS.set("testName",d.title||"");Object.keys(DEF).forEach(p=>{const c=LS.get("cfg:"+p,{});const o={title:d.title,sub:d.sub,date:d.date,marks:d.marks,secs:d.secs,booklet:(d.id||"")+"-"+DEF[p].series};if(d.time)o.time=d.time;Object.assign(c,o);LS.set("cfg:"+p,c)});refreshAll();showTest();try{e.source.postMessage({type:"gnsi-exam-ok",title:d.title},"*")}catch(x){}});
 
 window.addEventListener("message",e=>{if(e.source!==window.parent||window.parent===window)return;const d=e.data;if(!d||d.type!=="gnsi-roster"||typeof d.csv!=="string")return;LS.set("stuText",d.csv);$("stuText").value=d.csv;STU=parseStu(d.csv);refreshAll();alert0("Using "+STU.length+" students from the ERP.");try{e.source.postMessage({type:"gnsi-roster-ok",n:STU.length},"*")}catch(x){}});
 </script>

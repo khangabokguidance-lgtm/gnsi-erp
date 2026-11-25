@@ -310,7 +310,7 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
               {tab === 'mine' && <MineTab {...{ photoOf, papers, testById, me, isAdmin, allTeachers, savePaper, today, goMaker: id => { openWork(id); setTab('maker') } }} />}
               {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staffDir, tests, papersByTest, savePaper, isAdmin, me, load, flash }} />}
-              {tab === 'examkit' && <ExamKit mission="foundation" students={students} isMobile={isMobile} />}
+              {tab === 'examkit' && <ExamKit mission="foundation" students={students} tests={tests} papersByTest={papersByTest} isMobile={isMobile} />}
               {tab === 'marks' && <MarksTab {...{ allPapersByTest, tests, papersByTest, me, flash, students, isAdmin, audit, initialTest: activeTest, onSaved: loadMarks }} />}
               {tab === 'results' && <ResultsTab {...{ allPapersByTest, tests, papersByTest, flash, today }} />}
               {tab === 'analyser' && <AnalyserTab {...{ tests, papersByTest, allMarks, today }} />}
