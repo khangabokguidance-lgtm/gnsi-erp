@@ -27,6 +27,7 @@ import MissionSainikSetterPlan from './MissionSainikSetterPlan'
 import MissionSainikPracticePlan from './MissionSainikPracticePlan'
 import MissionSainikStudents from './MissionSainikStudents'
 import MissionSainikAdmit from './MissionSainikAdmit'
+import ExamKit from './ExamKit'
 import MissionSainikMockMarks from './MissionSainikMockMarks'
 import MissionSainikCertificates from './MissionSainikCertificates'
 import { retarget, nextVerifier, settersOfRow, settersLabel } from './lib/missionSainikAllot'
@@ -1734,6 +1735,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
             {tab === 'material' && materialTab}
             {tab === 'panel' && Panel()}
             {tab === 'students' && <MissionSainikStudents institute={institute} isMobile={isMobile} setMsg={setMsg} />}
+            {tab === 'examkit' && <ExamKit mission="sainik" isMobile={isMobile} />}
             {tab === 'admit' && <MissionSainikAdmit institute={institute} isMobile={isMobile} setMsg={setMsg} today={today} />}
             {tab === 'mockmarks' && <MissionSainikMockMarks currentUser={currentUser} isMobile={isMobile} setMsg={setMsg} today={today} />}
             {tab === 'certs' && <MissionSainikCertificates institute={institute} isMobile={isMobile} setMsg={setMsg} />}

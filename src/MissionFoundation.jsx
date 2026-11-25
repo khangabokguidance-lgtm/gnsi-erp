@@ -20,6 +20,7 @@ import { testReportBody, reportCardsBody, MFR_CSS } from './lib/missionFoundatio
 import { printPremium } from './lib/printPremium'
 import { FlowTracker, FlowNav } from './MissionSainikFlow'
 import TeacherPicker from './TeacherPicker'
+import ExamKit from './ExamKit'
 import { staffOptions, staffNameFor } from './lib/teacherPick'
 import { Faces, WithFace } from './MissionFoundationFaces'
 import { FOUNDATION_FLOW } from './lib/missionFoundationFlow'
@@ -247,6 +248,7 @@ export default function MissionFoundation({ currentUser }) {
     ] },
     { label: 'Test day', color: '#a7771f', tabs: [
       { id: 'conduct', label: 'Test day', icon: PIcon.shield, hint: 'Checklist, attendance and marks sheets' },
+      { id: 'examkit', label: 'Exam kit', icon: PIcon.file, hint: 'Question booklet, roll chart and OMR sheets' },
       { id: 'marks', label: 'Marks entry', icon: PIcon.list, hint: 'All subjects, one batch at a time' },
     ] },
     { label: 'Results & prizes', color: '#7c3aed', tabs: [
@@ -308,6 +310,7 @@ export default function MissionFoundation({ currentUser }) {
               {tab === 'maker' && <QuestionMakerTab key={activeTest || 'none'} {...{ tests, testId: activeTest, setTestId: openWork, papersByTest, me, isAdmin, flash, savePaper, isMobile }} />}
               {tab === 'mine' && <MineTab {...{ photoOf, papers, testById, me, isAdmin, allTeachers, savePaper, today, goMaker: id => { openWork(id); setTab('maker') } }} />}
               {tab === 'teachers' && <TeachersTab {...{ panel, panelFromDb, staffDir, tests, papersByTest, savePaper, isAdmin, me, load, flash }} />}
+              {tab === 'examkit' && <ExamKit mission="foundation" students={students} isMobile={isMobile} />}
               {tab === 'marks' && <MarksTab {...{ allPapersByTest, tests, papersByTest, me, flash, students, isAdmin, audit, initialTest: activeTest, onSaved: loadMarks }} />}
               {tab === 'results' && <ResultsTab {...{ allPapersByTest, tests, papersByTest, flash, today }} />}
               {tab === 'analyser' && <AnalyserTab {...{ tests, papersByTest, allMarks, today }} />}

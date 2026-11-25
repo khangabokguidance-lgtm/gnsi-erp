@@ -17,7 +17,7 @@ export const visibleTabIds = groups => new Set(groups.flatMap(g => g.items.map(i
 export const MENU_PRESETS = [
   { key: 'all', label: 'Everything', show: null },
   { key: 'setters', label: 'Question setters', show: ['overview', 'syllabus', 'mine', 'practice', 'material', 'prebuilder', 'megabuilder', 'dailybuilder', 'practicebuilder', 'guide'] },
-  { key: 'exam', label: 'Exam team', show: ['overview', 'schedule', 'mock', 'students', 'admit', 'marks', 'mockmarks', 'premock', 'megamock', 'certs', 'insights', 'guide'] },
+  { key: 'exam', label: 'Exam team', show: ['overview', 'schedule', 'mock', 'students', 'admit', 'examkit', 'marks', 'mockmarks', 'premock', 'megamock', 'certs', 'insights', 'guide'] },
 ]
 
 // The set of hidden screens that a preset means, given every screen id.
