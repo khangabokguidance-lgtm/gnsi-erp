@@ -218,6 +218,7 @@ table.ex-t td:first-child,table.ex-t th:first-child{text-align:left;padding-left
   <div class="row"><select id="chkStu" style="max-width:360px"></select><button class="btn l" id="chkPrev">← Previous</button><button class="btn l" id="chkNext">Next →</button><button class="btn gr" id="chkSave">Save marks</button><button class="btn r" id="chkClear">Clear answers</button></div>
   <div class="score" id="chkScore"></div>
   <div class="igrid" id="chkGrid"></div></div>
+ <div class="card noprint"><h2>Scan sheets with OMRChecker</h2><p class="h">Read every sheet at once from scanner PDFs or phone photos with the free OMRChecker program on a computer, then bring the answers back here. Imported answers show in the list above, so you can open any student and check the sheet by eye.</p><ol class="note" style="line-height:1.7;margin:0 0 10px;padding-left:18px"><li>Press <b>Download OMRChecker kit</b> for this paper and unzip it. It is made for exactly this sheet layout.</li><li>Put scanner PDFs or images in <b>scans</b>, phone photos in <b>phone</b>.</li><li>Double-click <b>Run OMRChecker.bat</b>. The first time, follow <b>Read me.txt</b> to install it.</li><li>Press <b>Import results CSV</b> and pick the Results files in the <b>outputs</b> folder.</li></ol><div class="row"><button class="btn g" id="omrcKit">Download OMRChecker kit (.zip)</button><label class="btn gr" style="cursor:pointer">Import results CSV<input type="file" id="omrcIn" accept=".csv,text/csv" multiple hidden></label></div><div id="omrcInfo" style="margin-top:8px"></div></div>
  <div class="card"><h2>Marks saved for this paper</h2>
   <div class="row" style="margin-bottom:8px"><button class="btn l" id="resCsv">Download marks as CSV</button><button class="btn l" id="resPrint">Print mark list</button><button class="btn r" id="resClear">Delete all saved marks</button></div>
   <div style="overflow:auto"><table class="t" id="resTable"></table></div></div>
@@ -516,6 +517,170 @@ function go(t){document.querySelectorAll("#tabs button").forEach(b=>b.classList.
 document.querySelectorAll("#tabs button").forEach(b=>b.onclick=()=>go(b.dataset.t));
 function refreshAll(){paintClsList();paintPapers();loadForm();picked=new Set(stuFor().map(s=>s.gcc));$("sheets").innerHTML=""}
 refreshAll();showAlloc();
+
+/* ---------- OMRChecker export / import (runs inside the OMR page) ---------- */
+// The template is measured from the very sheet this page prints, so it always matches the current sections.
+const OMRC_K=6; // template pixels per mm
+function omrcMeasure(c=cfg()){
+ const secs=sections(c);
+ const host=document.createElement("div");host.style.cssText="position:absolute;left:-10000px;top:0;width:210mm;zoom:1";
+ host.innerHTML=sheetHTML(c,secs,null,{});document.body.appendChild(host);
+ try{
+  const sh=host.querySelector(".sheet"),R=e=>e.getBoundingClientRect(),mid=e=>{const r=R(e);return[r.left+r.width/2,r.top+r.height/2]};
+  const tl=mid(sh.querySelector(".reg.tl")),tr=mid(sh.querySelector(".reg.tr")),bl=mid(sh.querySelector(".reg.bl"));
+  const pxmm=R(sh).width/210,W=Math.round((tr[0]-tl[0])/pxmm*OMRC_K),H=Math.round((bl[1]-tl[1])/pxmm*OMRC_K);
+  const X=x=>(x-tl[0])/(tr[0]-tl[0])*W,Y=y=>(y-tl[1])/(bl[1]-tl[1])*H,r2=n=>Math.round(n*100)/100;
+  const blocks={};
+  sh.querySelectorAll(".qc").forEach((qc,ci)=>{let blk=null;
+   [...qc.children].forEach(el=>{
+    if(el.classList.contains("qsh")){blk=null;return}
+    if(!el.classList.contains("qr"))return;
+    const q=+el.querySelector("i").textContent,b=el.querySelectorAll(".bub");
+    if(!blk){blk={from:q,to:q,rows:[[R(b[0]),R(b[1])]]};blocks["MCQ_Q"+q]=blk}else{blk.to=q;blk.rows.push([R(b[0]),R(b[1])])}
+   })});
+  const fieldBlocks={};let bd=null;
+  Object.entries(blocks).forEach(([name,b])=>{const [a0,a1]=b.rows[0];const dims=[Math.round(X(a0.right)-X(a0.left)),Math.round(Y(a0.bottom)-Y(a0.top))];bd=bd||dims;
+   fieldBlocks[name]={fieldType:"QTYPE_MCQ4",fieldLabels:[b.from===b.to?"q"+b.from:`q${b.from}..${b.to}`],bubbleDimensions:dims,
+    origin:[Math.round(X(a0.left)),Math.round(Y(a0.top))],bubblesGap:r2(X(a1.left)-X(a0.left)),labelsGap:b.rows.length>1?r2(Y(b.rows[1][0].top)-Y(a0.top)):0}});
+  const cols=[...sh.querySelectorAll(".rollg .col")];
+  const custom={};
+  if(cols.length){const c0=cols[0].querySelectorAll(".bub"),r0=R(c0[0]),r1=R(c0[1]);const D=cols.length;
+   fieldBlocks.Roll={fieldType:"QTYPE_INT",fieldLabels:[D>1?`roll1..${D}`:"roll1"],bubbleDimensions:[Math.round(X(r0.right)-X(r0.left)),Math.round(Y(r0.bottom)-Y(r0.top))],
+    origin:[Math.round(X(r0.left)),Math.round(Y(r0.top))],bubblesGap:r2(Y(r1.top)-Y(r0.top)),labelsGap:D>1?r2(X(R(cols[1].querySelector(".bub")).left)-X(r0.left)):0};
+   custom.Roll=[D>1?`roll1..${D}`:"roll1"]}
+  return{template:{pageDimensions:[W,H],bubbleDimensions:bd.map(Math.round),customLabels:custom,fieldBlocks,emptyValue:"",
+   preProcessors:[{name:"CropOnMarkers",options:{relativePath:"omr_marker.png",sheetToMarkerWidthRatio:30,min_matching_threshold:0.3}}]},
+   n:totalQ(secs)}
+ }finally{host.remove()}
+}
+// --- tiny zip writer (stored, no compression) ---
+const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRC_T[(c^u[i])&255]^(c>>>8);return(c^0xFFFFFFFF)>>>0}
+function makeZip(files){const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+ files.forEach(f=>{const name=enc.encode(f.name),data=typeof f.data==="string"?enc.encode(f.data):f.data,crc=crc32(data);
+  const h=new DataView(new ArrayBuffer(30));h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint16(6,0x0800,true);h.setUint32(14,crc,true);h.setUint32(18,data.length,true);h.setUint32(22,data.length,true);h.setUint16(26,name.length,true);
+  parts.push(new Uint8Array(h.buffer),name,data);
+  const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint16(8,0x0800,true);c.setUint32(16,crc,true);c.setUint32(20,data.length,true);c.setUint32(24,data.length,true);c.setUint16(28,name.length,true);c.setUint32(42,off,true);
+  cen.push(new Uint8Array(c.buffer),name);off+=30+name.length+data.length});
+ const csz=cen.reduce((a,b)=>a+b.length,0),e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,csz,true);e.setUint32(16,off,true);
+ return new Blob([...parts,...cen,new Uint8Array(e.buffer)],{type:"application/zip"})}
+function omrcMarker(){const c=document.createElement("canvas");c.width=c.height=70;const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,70,70);g.fillStyle="#000";g.fillRect(10,10,50,50);
+ const b=atob(c.toDataURL("image/png").split(",")[1]),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u}
+const OMRC_BAT=`@echo off
+rem GNSI OMR scan: reads every sheet in the "scans" and "phone" folders with OMRChecker.
+rem If OMRChecker is not in C:\\OMRChecker, change the next line.
+set OMRC=C:\\OMRChecker
+if not exist "%OMRC%\\main.py" (
+  echo OMRChecker was not found in %OMRC%. Open this file in Notepad and change the line "set OMRC=".
+  pause
+  exit /b
+)
+cd /d "%OMRC%"
+if exist "%~dp0outputs" rmdir /s /q "%~dp0outputs"
+echo Reading the sheets in "scans"...
+python main.py -i "%~dp0scans" -o "%~dp0outputs\\scans"
+echo Reading the photos in "phone"...
+python main.py -i "%~dp0phone" -o "%~dp0outputs\\phone"
+echo.
+echo Done. In the ERP, open OMR sheets, Check and marks, and press "Import results CSV".
+echo Pick the Results CSV files inside the "outputs" folder (outputs\\scans\\Results and outputs\\phone\\Results).
+pause
+`;
+function omrcReadme(title,paper,n){return `GNSI OMR SCAN KIT
+${title} · ${paper} paper · ${n} questions
+Made by the GNSI ERP OMR page for exactly this sheet layout. Make a new kit if the sections or questions change.
+
+ONE-TIME SETUP ON THE COMPUTER (Windows)
+1. Install Python 3.11 or newer from https://www.python.org/downloads/
+   During setup tick "Add python.exe to PATH".
+2. Download OMRChecker: https://github.com/Udayraj123/OMRChecker
+   Press the green "Code" button, then "Download ZIP". Unzip it to C:\\OMRChecker
+   (the folder that has main.py in it must be C:\\OMRChecker).
+3. Open PowerShell and run these two lines:
+     cd C:\\OMRChecker
+     python -m pip install -r requirements.txt opencv-python
+
+EVERY TEST
+1. Unzip this kit anywhere, for example on the Desktop.
+2. Put the sheets in:
+     scans  - scanner output: PDF (many pages is fine), JPG or PNG
+     phone  - photos taken with a phone camera
+3. Double-click "Run OMRChecker.bat".
+4. In the ERP: OMR sheets > 4 Check & marks > Import results CSV.
+   Pick the Results CSV file(s) in outputs\\scans\\Results and outputs\\phone\\Results
+   (each run of the .bat starts a fresh "outputs" folder).
+5. Look at the import report. Open any student it lists and check that sheet by eye.
+
+GOOD SCANS
+- Scanner: A4, 200 or 300 dpi, colour or grey. Scan the sheets straight.
+- Phone: the whole sheet with all 4 black corner squares in the photo, sheet flat
+  on a dark table, good light, no shadow across the sheet, camera straight above.
+  A phone scanner app (for example Google Drive > Scan) gives a flat page; put those
+  in "scans", not "phone".
+- Students must shade with a black or blue ball-point pen, fully and darkly.
+- Do not fold the sheets or write near the black corner squares.
+
+WHAT HAPPENS TO DOUBTFUL MARKS
+- Two bubbles shaded on one question: imported as blank (no marks) and listed in the report.
+- A roll number that cannot be matched to a student: listed in the report, assign it there.
+`}
+async function omrcKit(){
+ const c=cfg(),m=omrcMeasure(c);
+ const scans=m.template,phone=JSON.parse(JSON.stringify(scans));
+ phone.preProcessors=[{name:"CropPage",options:{morphKernel:[10,10]}},...scans.preProcessors];
+ const config={dimensions:{processing_width:1240,processing_height:1754},pdf_params:{pdf_page:"1-",pdf_dpi:200},outputs:{show_image_level:0,save_image_level:0}};
+ const testName=LS.get("testName","")||c.title||"";
+ const base=("GNSI_OMR_"+DEF[cur].name+"_"+(testName||"test")).replace(/[^A-Za-z0-9]+/g,"_").replace(/_+$/,"");
+ const mk=omrcMarker(),J=o=>JSON.stringify(o,null,1);
+ const zip=makeZip([
+  {name:base+"/Read me.txt",data:omrcReadme(testName,DEF[cur].name,m.n).replace(/\n/g,"\r\n")},
+  {name:base+"/Run OMRChecker.bat",data:OMRC_BAT.replace(/\n/g,"\r\n")},
+  {name:base+"/scans/config.json",data:J(config)},
+  {name:base+"/scans/template.json",data:J(scans)},
+  {name:base+"/scans/omr_marker.png",data:mk},
+  {name:base+"/scans/Put scanner PDFs or images here.txt",data:"Scanner output for this test: PDF, JPG or PNG."},
+  {name:base+"/phone/config.json",data:J(config)},
+  {name:base+"/phone/template.json",data:J(phone)},
+  {name:base+"/phone/omr_marker.png",data:mk},
+  {name:base+"/phone/Put phone photos here.txt",data:"Phone photos of the sheets for this test."},
+ ]);
+ const a=document.createElement("a");a.href=URL.createObjectURL(zip);a.download=base+".zip";document.body.appendChild(a);a.click();a.remove();
+ $("omrcInfo").innerHTML=`<div class="msg ok">Downloaded <b>${esc(base)}.zip</b> for ${m.n} questions. Unzip it and follow <b>Read me.txt</b>.</div>`;
+}
+// --- import ---
+function csvRows(t){const out=[];let row=[],cell="",q=false;t=t.replace(/^\ufeff/,"");
+ for(let i=0;i<t.length;i++){const ch=t[i];
+  if(q){if(ch==='"'){if(t[i+1]==='"'){cell+='"';i++}else q=false}else cell+=ch}
+  else if(ch==='"')q=true;else if(ch===","){row.push(cell);cell=""}else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&t[i+1]==="\n")i++;row.push(cell);out.push(row);row=[];cell=""}else cell+=ch}
+ if(cell!==""||row.length){row.push(cell);out.push(row)}return out.filter(r=>r.some(x=>x!==""))}
+let omrcPending=[];
+async function omrcImport(files){
+ const c=cfg(),n=totalQ(sections(c)),D=parseInt(c.digits)||4,list=stuFor();
+ const pad=s=>String(s||"").replace(/\D/g,"").padStart(D,"0").slice(-D);
+ const byRoll=new Map(),byGcc=new Map();list.forEach(s=>{byRoll.set(pad(rollOf(s,c)),s);byGcc.set(String(s.gcc),s)});
+ const r=resAll();let ok=0,over=0;const multi=[],unmatched=[];
+ for(const f of files){const rows=csvRows(await f.text());if(!rows.length)continue;const h=rows[0];const iF=h.indexOf("file_id"),iR=h.indexOf("Roll");
+  const qi=[];for(let q=1;q<=n;q++)qi.push(h.indexOf("q"+q));
+  if(qi.every(x=>x<0)){$("omrcInfo").innerHTML=`<div class="msg bad">${esc(f.name)} has no q1, q2 … columns. Pick the Results CSV made by OMRChecker.</div>`;return}
+  rows.slice(1).forEach(row=>{const file=row[iF]||"",roll=row[iR]||"";const mm=[];
+   const ans=qi.map((i,k)=>{const v=String(i<0?"":row[i]||"").trim().toUpperCase();if(v.length>1){mm.push(k+1);return"-"}return/^[ABCD]$/.test(v)?v:"-"}).join("");
+   let s=/\d/.test(roll)&&!/[^0-9]/.test(roll)?byRoll.get(pad(roll)):null;
+   if(!s){const g=(file.match(/\d+/g)||[]).find(x=>byGcc.has(x));if(g)s=byGcc.get(g)}
+   if(!s){unmatched.push({file,roll,ans,mm});return}
+   if(r[s.gcc])over++;r[s.gcc]={ans,at:Date.now(),src:"omrchecker",file};ok++;if(mm.length)multi.push({s,mm})})}
+ LS.set("res:"+TK()+cur,r);omrcPending=unmatched;omrcLast={ok,over,multi};paintRes();paintChkStu();omrcReport()}
+let omrcLast={ok:0,over:0,multi:[]};
+function omrcReport(){const {ok,over,multi}=omrcLast;const left=stuFor().filter(s=>!resAll()[s.gcc]);
+ let h=`<div class="msg ${omrcPending.length?"bad":"ok"}"><b>${ok}</b> sheet${ok===1?"":"s"} imported${over?` (${over} replaced earlier answers)`:""}.${omrcPending.length?` <b>${omrcPending.length}</b> could not be matched to a student: assign them below.`:""}</div>`;
+ if(multi.length)h+=`<div class="msg bad">Two bubbles shaded, imported as blank: `+multi.map(x=>`${esc(rollOf(x.s))} ${esc(x.s.name)} (Q.${x.mm.join(", ")})`).join("; ")+`</div>`;
+ if(omrcPending.length)h+=`<table class="t" style="margin-top:8px"><tr><th>Sheet</th><th>Roll read</th><th>Answered</th><th>Student</th><th></th></tr>`+omrcPending.map((u,i)=>`<tr><td>${esc(u.file)}</td><td>${esc(u.roll||"—")}</td><td class="n">${(u.ans.match(/[ABCD]/g)||[]).length}</td><td><select data-u="${i}" style="max-width:260px"><option value="">Choose…</option>${left.map(s=>`<option value="${esc(s.gcc)}">${esc(rollOf(s))} · ${esc(s.name)}</option>`).join("")}</select></td><td><button class="btn gr" data-ua="${i}">Assign</button></td></tr>`).join("")+`</table>`;
+ $("omrcInfo").innerHTML=h}
+
+$("omrcKit").onclick=()=>{try{omrcKit()}catch(e){$("omrcInfo").innerHTML=`<div class="msg bad">Could not make the kit: ${esc(e.message)}</div>`}};
+$("omrcIn").onchange=e=>{const f=[...e.target.files];e.target.value="";if(f.length)omrcImport(f).catch(x=>{$("omrcInfo").innerHTML=`<div class="msg bad">Could not read the file: ${esc(x.message)}</div>`})};
+$("omrcInfo").addEventListener("click",e=>{const i=e.target.dataset.ua;if(i==null)return;const sel=$("omrcInfo").querySelector(`select[data-u="${i}"]`);if(!sel||!sel.value)return;
+ const u=omrcPending[+i],r=resAll();r[sel.value]={ans:u.ans,at:Date.now(),src:"omrchecker",file:u.file};LS.set("res:"+TK()+cur,r);omrcPending.splice(+i,1);omrcLast.ok++;paintRes();paintChkStu();omrcReport()});
+
 
 showTest();window.addEventListener("message",e=>{if(e.source!==window.parent||window.parent===window)return;const d=e.data;if(!d||d.type!=="gnsi-exam")return;LS.set("test",d.tag||"");LS.set("testName",d.title||"");Object.keys(DEF).forEach(p=>{const c=LS.get("cfg:"+p,{});const o={title:d.title,sub:d.sub,date:d.date,marks:d.marks,secs:d.secs,booklet:(d.id||"")+"-"+DEF[p].series};if(d.time)o.time=d.time;Object.assign(c,o);LS.set("cfg:"+p,c)});refreshAll();showTest();try{e.source.postMessage({type:"gnsi-exam-ok",title:d.title},"*")}catch(x){}});
 
