@@ -163,8 +163,8 @@ const CSS = `
 .msx-fab{position:fixed;right:18px;bottom:calc(92px + env(safe-area-inset-bottom));z-index:35;display:flex;align-items:center;gap:8px;height:48px;padding:0 20px;border-radius:6px;background:var(--navy);color:#fff;font-weight:700;font-size:14px;border:2px solid var(--gold);box-shadow:0 8px 20px rgba(11,28,54,.4)}
 .msx-fab:hover{background:var(--blue)}
 .msx-scrim{position:fixed;inset:0;z-index:50;background:rgba(8,18,38,.55);animation:msx-fade .2s both}
-.msx-sheet{position:fixed;left:0;right:0;bottom:0;z-index:51;max-height:86vh;overflow:auto;background:#fff;border-radius:14px 14px 0 0;border-top:4px solid var(--gold);padding:10px 16px calc(24px + env(safe-area-inset-bottom));animation:msx-up .28s cubic-bezier(.2,.9,.3,1) both;box-shadow:0 -12px 40px rgba(0,0,0,.25)}
-.msx-sheet .grab{width:42px;height:4px;border-radius:2px;background:#c3cde0;margin:2px auto 12px}
+.msx-sheet{position:fixed;left:0;right:0;bottom:0;z-index:51;max-height:86vh;overflow:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:#fff;border-radius:14px 14px 0 0;border-top:4px solid var(--gold);padding:10px 16px calc(24px + env(safe-area-inset-bottom));animation:msx-up .28s cubic-bezier(.2,.9,.3,1) both;box-shadow:0 -12px 40px rgba(0,0,0,.25)}
+.msx-sheet .grab{width:42px;height:4px;border-radius:2px;background:#c3cde0;margin:2px auto 12px;position:relative;touch-action:none}.msx-sheet .grab::after{content:'';position:absolute;inset:-14px -40px}
 .msx-sheet h4{margin:16px 2px 8px;padding-bottom:5px;font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--navy);border-bottom:2px solid var(--tint)}
 .msx-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .msx-tile{display:flex;flex-direction:column;align-items:center;gap:7px;padding:10px 2px;border-radius:8px;font-size:11.5px;font-weight:700;color:var(--ink);text-align:center}
@@ -535,7 +535,14 @@ export default function MissionSainikShell({ navGroups, active, onChange, title,
         <>
           <div className="msx-scrim" onClick={() => setSheet(false)} />
           <div className="msx-sheet" role="dialog" aria-modal="true" aria-label="All sections">
-            <div className="grab" />
+            <div className="grab" onPointerDown={e => {   // drag the handle down to close the sheet
+              const el = e.currentTarget.parentElement, y0 = e.clientY; let dy = 0
+              try { e.currentTarget.setPointerCapture(e.pointerId) } catch { /* ignore */ }
+              const mv = ev => { dy = Math.max(0, ev.clientY - y0); el.style.transition = 'none'; el.style.transform = `translateY(${dy}px)` }
+              const up = () => { window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up)
+                if (dy > 90) setSheet(false); else { el.style.transition = 'transform .2s'; el.style.transform = '' } }
+              window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up)
+            }} />
             <div className="msx-sticky">{finder(sheetFind, 'Find a section… e.g. marks, paper')}</div>
             {needle ? resultList : (
               <>
