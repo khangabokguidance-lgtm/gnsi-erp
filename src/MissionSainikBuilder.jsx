@@ -363,7 +363,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     const list = get(testNo, section)
     if (!list.length || !canEdit(testNo, section)) return
     if (!window.confirm(`Delete all ${list.length} questions of ${section} for ${tid(testNo)}?`)) return
-    await removeRows(x => x.eq('series', series).eq('test_no', testNo).eq('section', section).is('deleted_at', null), `${series}:${testNo}:${section}`, list.length)
+    await removeRows(x => { const r = x.eq('series', series).eq('test_no', testNo).eq('section', section); return soft ? r.is('deleted_at', null) : r }, `${series}:${testNo}:${section}`, list.length)
   }
   const saveEdit = async () => {
     const d = editQ
@@ -417,7 +417,7 @@ export default function MissionSainikBuilder({ syllabus = null, practiceQ = null
     const lines = [head.map(cell).join(',')]
     cfg.tests.forEach(t => live(t.no).forEach(sc => get(t.no, sc.label).forEach((q, i) => lines.push([cfg.name, tid(t.no), sc.label, startOf(sc.label) + i, q.question, q.option_a, q.option_b, q.option_c, q.option_d, q.answer, q.explanation, q.topic, q.difficulty, q.uploaded_by, signoff(t.no, sc.label)?.verified_by || ''].map(cell).join(',')))))
     const url = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' }))
-    const a = document.createElement('a'); a.href = url; a.download = `Mission_Sainik_${cfg.name.replace(/\s+/g, '_')}_questions.csv`; a.click(); URL.revokeObjectURL(url)
+    const a = document.createElement('a'); a.href = url; a.download = `Mission_Sainik_${cfg.name.replace(/\s+/g, '_')}_questions.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(url), 4000)
     audit('export_questions', series, { rows: lines.length - 1 })
   }
   const loadFile = e => {
@@ -616,7 +616,7 @@ ${body}${count < qTotal(t, secs) ? `<div class="conf">DRAFT — ${count} of ${qT
     try { html = wordWrap(`<style>${ver.layout === 'book' ? bookCss.replace(/@page\{[\s\S]*?\}\}/, '') : docCss}${brandCss.replace(/\.wm\{[^}]*\}|\.ftr\{[^}]*\}/g, '')}</style>` + allBodies(t, key).map(b => `<div style="page-break-after:always">${b}</div>`).join(''), docTitle(t, key))
     } finally { setMathStacked(true) }
     const url = URL.createObjectURL(new Blob(['﻿' + html], { type: 'application/msword' }))
-    const a = document.createElement('a'); a.href = url; a.download = docTitle(t, key).replace(/\s+/g, '_') + '.doc'; a.click(); URL.revokeObjectURL(url)
+    const a = document.createElement('a'); a.href = url; a.download = docTitle(t, key).replace(/\s+/g, '_') + '.doc'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 4000)
     audit('export_word', `${series}:${t}`, { key })
   }
   const printOmr = t => {
@@ -642,7 +642,7 @@ ${body}${count < qTotal(t, secs) ? `<div class="conf">DRAFT — ${count} of ${qT
     if (!list.length) return setMsg('❌ Nothing to export here yet.')
     const data = { format: 'gnsi-qbank', version: 1, series, institute: instName, exported_at: new Date().toISOString(), count: list.length, questions: list }
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: 'application/json' }))
-    const a = document.createElement('a'); a.href = url; a.download = `QBank_${series}_${scope === 'all' ? 'all' : scope === 'test' ? tid(testNo) : tid(testNo) + '_' + sec.short}.json`.replace(/\s+/g, '_'); a.click(); URL.revokeObjectURL(url)
+    const a = document.createElement('a'); a.href = url; a.download = `QBank_${series}_${scope === 'all' ? 'all' : scope === 'test' ? tid(testNo) : tid(testNo) + '_' + sec.short}.json`.replace(/\s+/g, '_'); a.click(); setTimeout(() => URL.revokeObjectURL(url), 4000)
     audit('bank_export', `${series}:${scope}`, { count: list.length }); setMsg(`✅ ${list.length} question(s) exported`)
   }
   const importBank = async e => {
@@ -692,7 +692,7 @@ ${body}${count < qTotal(t, secs) ? `<div class="conf">DRAFT — ${count} of ${qT
     for (const key of seen.keys()) { const [t, sc] = key.split('|'); await clearSignoff(Number(t), sc) }
     setMsg(`✅ ${rows.length} question(s) imported${dupes ? ` · ${dupes} duplicate(s) skipped` : ''}`); load()
   }
-  const downloadTemplate = () => { const url = URL.createObjectURL(new Blob([CSV_TEMPLATE], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'Mission_Sainik_questions_template.csv'; a.click(); URL.revokeObjectURL(url) }
+  const downloadTemplate = () => { const url = URL.createObjectURL(new Blob([CSV_TEMPLATE], { type: 'text/csv' })); const a = document.createElement('a'); a.href = url; a.download = 'Mission_Sainik_questions_template.csv'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 4000) }
   // Bulk actions on the ticked questions of the current section
   const toggle = id => setPicked(p => (p.includes(id) ? p.filter(x => x !== id) : [...p, id]))
   const moveSelected = async copy => {
@@ -715,9 +715,12 @@ ${body}${count < qTotal(t, secs) ? `<div class="conf">DRAFT — ${count} of ${qT
       const other = await otherSeriesTexts(tt, ss), clash = rowsSel.filter(q => other.texts.has(normQ(q.question)))
       if (clash.length) return setMsg(`❌ ${clash.length} of these ${clash.length === 1 ? 'is' : 'are'} already in the ${otherName} for ${tid(tt)} · ${ss}.`)
     }
+    const haveTxt = new Set(get(tt, ss).map(x => normQ(x.question)))
+    const dup = rowsSel.filter(q => haveTxt.has(normQ(q.question)))
+    if (dup.length) return setMsg(`❌ ${dup.length} of these ${dup.length === 1 ? 'is' : 'are'} already in ${tid(tt)} · ${ss}, e.g. “${dup[0].question.slice(0, 50)}”. Untick ${dup.length === 1 ? 'it' : 'them'} first.`)
     if (!window.confirm(`${copy ? 'Copy' : 'Move'} ${rowsSel.length} question(s) to ${tid(tt)} · ${ss}?`)) return
     let error
-    if (copy) ({ error } = await supabase.from(TABLE).insert(rowsSel.map(({ id, created_at, deleted_at, deleted_by, ...r }) => ({ ...r, test_no: tt, section: ss, uploaded_by: currentUser?.name || '' }))))  // eslint-disable-line no-unused-vars
+    if (copy) ({ error } = await supabase.from(TABLE).insert(rowsSel.map(({ id, created_at, deleted_at, deleted_by, in_paper, in_paper_by, ...r }) => ({ ...r, test_no: tt, section: ss, uploaded_by: currentUser?.name || '' }))))  // eslint-disable-line no-unused-vars
     else ({ error } = await supabase.from(TABLE).update({ test_no: tt, section: ss }).in('id', rowsSel.map(q => q.id)))
     if (error) return setMsg('❌ ' + error.message)
     audit(copy ? 'copy_questions' : 'move_questions', `${series}:${testNo}:${section}`, { to: `${tt}:${ss}`, count: rowsSel.length })
