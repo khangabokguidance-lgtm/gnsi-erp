@@ -28,7 +28,7 @@ function PhotoViewer({ url, name, onClose }) {
   return createPortal(
     <div role="dialog" aria-modal="true" aria-label={`Photo of ${name}`} onClick={e => { e.stopPropagation(); onClose() }}
       style={{ position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(8,16,34,.82)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 16, cursor: 'zoom-out' }}>
-      <img src={url} alt={String(name || '')} style={{ width: 'min(92vw, 520px)', maxHeight: '78vh', objectFit: 'contain', borderRadius: 20, background: '#F4F1EA', border: '3px solid #E2C57E', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }} />
+      <img src={url} alt={String(name || '')} style={{ width: 'min(92vw, 520px)', maxHeight: '78dvh', objectFit: 'contain', borderRadius: 20, background: '#F4F1EA', border: '3px solid #E2C57E', boxShadow: '0 20px 60px rgba(0,0,0,.5)' }} />
       <div style={{ color: '#fff', fontWeight: 800, fontSize: 18, textAlign: 'center' }}>{name}</div>
       <button type="button" onClick={e => { e.stopPropagation(); onClose() }} aria-label="Close photo" style={{ border: 0, borderRadius: 99, padding: '10px 26px', fontSize: 15, fontWeight: 800, background: '#fff', color: '#132a4f', cursor: 'pointer', fontFamily: 'inherit' }}>Close</button>
     </div>, document.body)

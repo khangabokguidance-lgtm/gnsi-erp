@@ -160,7 +160,7 @@ function TaskDialog({ sel, today, isAdmin, allowed, busy, onSave, onClose, chapt
     return (
       <div className="msx-overlay" onClick={() => onClose()} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
         <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Update task" onClick={e => e.stopPropagation()}
-          style={{ width: 'min(480px,100%)', maxHeight: '90vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22, boxShadow: '0 30px 60px -20px rgba(0,0,0,.5)' }}>
+          style={{ width: 'min(480px,100%)', maxHeight: '90dvh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22, boxShadow: '0 30px 60px -20px rgba(0,0,0,.5)' }}>
           <div style={{ fontFamily: PX.serif, fontSize: 21, fontWeight: 600, color: PX.navy }}>
             {sel.kind === 'test' ? `PMT-${String(sel.test_no).padStart(2, '0')} · ` : 'Practice · '}{sel.subject}
           </div>
@@ -1747,7 +1747,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
         onUseAsNotes={({ title, subject, body }) => { setPaperMaker(false); setEditMat(null); setMatDraft({ title, subject: subject || '', test_no: 0, link_url: '', note: '', body, file: null }); setTab('material') }} />}
       {viewMat && (
         <div className="msx-overlay" onClick={() => setViewMat(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div className="msx-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: 'min(720px,100%)', maxHeight: '88vh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>
+          <div className="msx-dialog" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" style={{ width: 'min(720px,100%)', maxHeight: '88dvh', overflow: 'auto', background: '#fff', borderRadius: 18, padding: 22 }}>
             <div style={{ fontFamily: PX.serif, fontSize: 21, fontWeight: 600, color: PX.navy }}>{viewMat.title}</div>
             <div style={{ fontSize: 12.5, color: PX.sub, margin: '4px 0 12px' }}>{[viewMat.subject || 'All subjects', viewMat.test_no ? 'Test ' + viewMat.test_no : null, viewMat.uploaded_by].filter(Boolean).join(' · ')}</div>
             <style>{MATH_CSS + MATERIAL_CSS}</style><div className="md" dangerouslySetInnerHTML={{ __html: renderMaterial(viewMat.body) }} />
@@ -1760,7 +1760,7 @@ function MissionSainikInner({ currentUser: sessionUser }) {
       )}
       {addTask && (
         <div className="msx-overlay" onClick={() => setAddTask(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-          <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Add task" onClick={e => e.stopPropagation()} style={{ width: 'min(520px,100%)', maxHeight: '92vh', overflow: 'auto', background: '#fff', borderRadius: 20, padding: 0 }}>
+          <div className="msx-dialog" role="dialog" aria-modal="true" aria-label="Add task" onClick={e => e.stopPropagation()} style={{ width: 'min(520px,100%)', maxHeight: '92dvh', overflow: 'auto', background: '#fff', borderRadius: 20, padding: 0 }}>
             {(() => {
               const f = addTask, set = patch => setAddTask({ ...f, ...patch })
               const isTest = f.kind === 'test'
