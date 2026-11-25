@@ -33,6 +33,7 @@ const CSS = `
 .msx ::selection{background:rgba(29,79,145,.22)}
 .msx-tap{cursor:pointer;border:0;background:none;position:relative;transition:background .15s,color .15s,border-color .15s,box-shadow .15s}
 .msx button:focus-visible,.msx input:focus-visible,.msx a:focus-visible{outline:3px solid #f2c94c;outline-offset:2px}
+.msx-overlay,.msx-dialog{overscroll-behavior:contain}
 .msx-skip{position:absolute;left:8px;top:-60px;z-index:100;background:#fff;color:var(--navy);font-weight:700;padding:10px 16px;border-radius:6px;border:2px solid var(--navy);text-decoration:none}.msx-skip:focus{top:8px}
 
 /* ── Utility bar: accessibility controls, as on official portals ── */

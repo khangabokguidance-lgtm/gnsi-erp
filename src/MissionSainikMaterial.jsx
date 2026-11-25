@@ -416,7 +416,7 @@ export default function MissionSainikMaterial({ mats, matSetup, draft, setDraft,
                   </div>
                 </div>
               )}
-              {view !== 'edit' && <div style={view === 'split' ? { position: 'sticky', top: 8, maxHeight: '86vh', overflow: 'auto' } : undefined}>
+              {view !== 'edit' && <div style={view === 'split' ? { position: 'sticky', top: 8, maxHeight: '86dvh', overflow: 'auto' } : undefined}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
                   <b style={{ fontSize: 13 }}>Live preview</b><span style={{ fontSize: 12, color: PX.sub }}>as it will print</span>
                   <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -558,7 +558,7 @@ export function PrintDialog({ m, opts, setOpts, creator, onClose, onPrint, onWor
   const blocked = nup && pages != null && pages > 1
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(14,32,63,.6)', zIndex: 1100, display: 'flex', alignItems: isMobile ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobile ? 0 : 14 }}>
-      <div role="dialog" aria-modal="true" aria-label="Print options" onClick={e => e.stopPropagation()} style={{ width: 'min(620px,100%)', maxHeight: isMobile ? '92vh' : '90vh', overflow: 'auto', background: '#fff', borderRadius: isMobile ? '26px 26px 0 0' : 24, padding: 0, boxShadow: '0 24px 60px rgba(10,20,40,.4)' }}>
+      <div role="dialog" aria-modal="true" aria-label="Print options" onClick={e => e.stopPropagation()} style={{ width: 'min(620px,100%)', maxHeight: isMobile ? '92dvh' : '90dvh', overflow: 'auto', background: '#fff', borderRadius: isMobile ? '26px 26px 0 0' : 24, padding: 0, boxShadow: '0 24px 60px rgba(10,20,40,.4)' }}>
         <div style={{ padding: '16px 20px', background: 'linear-gradient(135deg,#132a4f,#2f5aa3)', color: '#fff', borderRadius: isMobile ? '26px 26px 0 0' : '24px 24px 0 0', position: 'sticky', top: 0, zIndex: 2 }}>
           <div style={{ display: 'flex', alignItems: 'center' }}><div style={{ flex: 1 }}><div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: '.16em', textTransform: 'uppercase', color: '#e9d9b0' }}>Print options</div><div style={{ fontFamily: PX.serif, fontSize: 19, fontWeight: 600 }}>{m.title}</div></div>
             <button type="button" aria-label="Close" onClick={onClose} style={{ border: 'none', background: 'rgba(255,255,255,.16)', color: '#fff', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontSize: 17 }}>×</button></div>
