@@ -121,7 +121,11 @@ export function buildRegister(student, entries, session, rates, now = instituteN
   const totalPaid = rows.reduce((s, r) => s + r.paidAmt, 0) + (admission?.paidAmt || 0) + other.reduce((s, x) => s + x.amount, 0) - advancePaid
   // Dues the institute has written off (Refunds & Transfers) lower the balance, never below 0.
   const totalDue = Math.max(0, rows.reduce((s, r) => s + r.due, 0) + (admission?.due || 0) - (Number(writtenOff) || 0))
-  return { start, rows, admission, other, totalPaid, advancePaid, writtenOff: Number(writtenOff) || 0, totalDue, dueMonths: rows.filter(r => r.status === 'due').length }
+  // Approved standing concessions / special fees (Concession register) on the months that have
+  // started — shown on their own, so the billed fee stays the full fee.
+  const started = rows.filter(r => r.status !== 'before' && r.status !== 'upcoming' && r.standingAmt > 0)
+  const concession = Math.round(started.reduce((s, r) => s + r.standingAmt, 0) * 100) / 100
+  return { start, rows, admission, other, totalPaid, advancePaid, writtenOff: Number(writtenOff) || 0, totalDue, dueMonths: rows.filter(r => r.status === 'due').length, concession, concessionMonths: started.length }
 }
 
 // ── Account statement (Dr/Cr) ───────────────────────────────────────────────

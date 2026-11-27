@@ -4615,6 +4615,15 @@ export default function Fees() {
   const [lowFeePending, setLowFeePending] = useState(0)
   const refreshLowFeePending = useCallback(() => { Promise.all([countPendingConcessions(), countPendingFeeRequests()]).then(([a, b]) => setLowFeePending(a + b)) }, [])
   useEffect(() => { if (isAdmin) refreshLowFeePending() }, [isAdmin, refreshLowFeePending])
+  // Concession / special-fee requests waiting for an admin (fee_concession_register, status pending).
+  const [concessionPending, setConcessionPending] = useState(0)
+  useEffect(() => {
+    if (!isAdmin) return
+    let live = true
+    supabase.from('fee_concession_register').select('id', { count: 'exact', head: true }).eq('status', 'pending')
+      .then(({ count, error }) => { if (live && !error) setConcessionPending(count || 0) })
+    return () => { live = false }
+  }, [isAdmin, tab])
   // Open hostel-type issues (record ≠ hostel bed + pending wrong-type approvals).
   const [hostelIssueCount, setHostelIssueCount] = useState(0)
   const refreshHostelIssues = useCallback(() => { countHostelIssues(students).then(setHostelIssueCount).catch(() => {}) }, [students])
@@ -4944,6 +4953,8 @@ export default function Fees() {
   const COUNTER_TOOLS = [
     { id: 'dayClose', label: 'Daily Closing',  short: 'Day Close', icon: 'daycalc',  group: 'tools' },
     { id: 'verify',   label: 'Verify Receipt', short: 'Verify',    icon: 'verifyqr', group: 'tools' },
+    // Lower fee in the same course (sibling, staff ward, scholarship …): staff request, admin approves.
+    { id: 'concessions', label: 'Concession / Special Fee', short: 'Concessions', icon: 'scholar', group: 'tools', badge: isAdmin ? concessionPending : 0 },
   ]
   const ADMIN_PANEL = !isAdmin ? [] : [
     { title: 'Overview', tiles: [
@@ -5529,7 +5540,7 @@ export default function Fees() {
       {tab === 'reminders' && isAdmin && <FeeTabShell><FeeReminders students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'lateEntries' && isAdmin && <FeeLateEntries students={students} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} onCollect={goCollect} onLedger={goLedger} />}
       {tab === 'installments' && isAdmin && <FeeTabShell><FeeInstallments students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
-      {tab === 'concessionRegister' && isAdmin && <FeeTabShell><FeeConcessionRegister students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
+      {((tab === 'concessionRegister' && isAdmin) || tab === 'concessions') && <FeeTabShell><FeeConcessionRegister students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'waivers' && isAdmin && <FeeTabShell><FeeWaivers students={students} /></FeeTabShell>}
       {tab === 'detector' && isAdmin && <FeeTabShell><FeeDetector students={students} /></FeeTabShell>}
       {tab === 'refunds' && isAdmin && <FeeTabShell><FeeRefunds students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
@@ -5553,7 +5564,7 @@ export default function Fees() {
         const main = isAdmin
           ? [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger']]
           : [['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger'], ['dayClose', 'Close', 'daycalc'], ['verify', 'Verify', 'verifyqr']]
-        const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0)
+        const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0) + (concessionPending || 0)
         const inMain = main.some(m => m[0] === tab)
         const go = id => { setTab(id); setSearch(''); setHubOpen(false); window.scrollTo({ top: 0 }) }
         return (

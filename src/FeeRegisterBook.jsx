@@ -228,6 +228,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
           <div className="frb-sumc"><b>Paid this session</b><span style={{ color: '#146c3a' }}>₹{fmt(reg.totalPaid)}</span></div>
           <div className="frb-sumc"><b>Balance due now</b><span style={{ color: reg.totalDue + openingBalance ? '#b42318' : '#146c3a' }}>{rates ? `₹${fmt(reg.totalDue + openingBalance)}` : '…'}</span>{openingBalance > 0 && <small title={arrearsBySession.map(a => `${shortSession(a.session)}: ₹${fmt(a.due)} (${a.months.join(', ')})`).join('\n')} style={{ display: 'block', fontSize: 11, color: '#9a3412', marginTop: 2 }}>incl. ₹{fmt(openingBalance)} from {arrearsBySession.map(a => shortSession(a.session)).join(', ')}</small>}</div>
           {registerExcess(reg).total > 0 && <div className="frb-sumc"><b>Collected above due</b><span style={{ color: '#9a5b00' }}>₹{fmt(registerExcess(reg).total)}</span><small>{registerExcess(reg).months} month{registerExcess(reg).months > 1 ? 's' : ''} paid more than the due</small></div>}
+          {reg.concession > 0 && <div className="frb-sumc"><b>Concession (approved)</b><span style={{ color: '#7c3aed' }}>₹{fmt(reg.concession)}</span><small>{reg.concessionMonths} month{reg.concessionMonths > 1 ? 's' : ''} · Fees → Concession / Special Fee</small></div>}
           <div className="frb-sumc"><b>Months due</b><span style={{ color: reg.dueMonths ? '#b42318' : '#146c3a' }}>{rates ? reg.dueMonths : '…'}</span></div>
           <div className="frb-sumc"><b>Monthly rate{changes.length ? ` (${student.hostel_type || 'Day Scholar'})` : ''}</b><span style={{ color: '#1d3a78', fontSize: 15 }}>{curRates ? `₹${fmt(curRates.courseFee)} course · ₹${fmt(curRates.flatFee)} flat` : '…'}</span></div>
         </div>
@@ -277,7 +278,7 @@ export default function FeeRegisterBook({ student, admRows, flatRows, crsRows, m
                   <tr key={r.month}>
                     <td className="hand">{r.month.slice(0, 3)} {r.year}</td>
                     <td>{r.head}{changes.length > 0 && r.hostelType && <span className="muted" style={{ fontSize: 11 }}> · {r.hostelType}</span>}</td>
-                    <td className="num">{rates ? fmt(r.expected) : '…'}</td>
+                    <td className="num">{rates ? fmt(r.expected) : '…'}{r.standingAmt > 0 && r.status !== 'before' && <small style={{ display: 'block', fontSize: 10.5, color: '#7c3aed' }} title="Approved concession / special fee">− {fmt(r.standingAmt)} concession</small>}</td>
                     <td className="num">{r.paidAmt ? fmt(r.paidAmt) : <span className="muted">—</span>}</td>
                     <td>{r.paid[0] ? fmtDate(r.paid[0].date) : <span className="muted">—</span>}</td>
                     <td>{r.paid.length ? r.paid.map((x, i) => <span key={i}>{i ? ', ' : ''}{receiptBtn(x.receipt)}</span>) : <span className="muted">—</span>}</td>
@@ -387,7 +388,7 @@ function printRegister(student, reg, bookRows, session, bookScope) {
   <div class="f"><div><b>Name</b><span>${escH(student.name)}</span></div><div><b>GCC No.</b><span>GCC-${escH(student.gcc_no)}</span></div><div><b>Adm. No.</b><span>${escH(student.admission_no || '—')}</span></div><div><b>Course</b><span>${escH([student.course, student.batch].filter(Boolean).join(' · ') || '—')}</span></div><div><b>Hostel</b><span>${escH(student.hostel_type || '—')}</span></div><div><b>Admitted</b><span>${escH(fmtDate(student.admission_date))}</span></div></div>
   <h2>Month-wise register</h2>
   <table><thead><tr><th>Month</th><th>Fee head</th><th>Due (₹)</th><th>Paid (₹)</th><th>Date</th><th>Receipt No.</th><th>Status</th></tr></thead><tbody>${mRows}</tbody></table>
-  <div class="tot">Paid this session ₹${fmt(reg.totalPaid)} &nbsp;·&nbsp; Balance due ₹${fmt(reg.totalDue)}</div>
+  <div class="tot">Paid this session ₹${fmt(reg.totalPaid)}${reg.concession > 0 ? ` &nbsp;·&nbsp; Concession ₹${fmt(reg.concession)}` : ''} &nbsp;·&nbsp; Balance due ₹${fmt(reg.totalDue)}</div>
   <h2>Day book${bookScope === 'all' ? ' (all time)' : ''}</h2>
   <table><thead><tr><th>S.No</th><th>Date</th><th>Receipt No.</th><th>Particulars</th><th>For</th><th>Mode</th><th>Collected by</th><th>Amount (₹)</th><th>Progressive (₹)</th></tr></thead><tbody>${bRows || '<tr><td colspan="9">No payments.</td></tr>'}</tbody></table>
   <div class="sig"><span>Printed ${escH(new Date().toLocaleString('en-IN'))}</span><div>Accounts Office</div><div>Principal</div></div>
