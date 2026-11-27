@@ -153,6 +153,7 @@ export default function FeeCourseLedger({ students }) {
             <div className="fbk-kpi"><b>Students</b><span>{shown.length}</span><small>{scope || 'all courses'} · {shortSession(session)}</small></div>
             <div className="fbk-kpi"><b>Billed</b><span>₹{fmt(tot.billed)}</span><small>{period}{monthIdx === null ? ' · to date' : ''}</small></div>
             <div className="fbk-kpi"><b>Collected</b><span style={{ color: '#146c3a' }}>₹{fmt(tot.paid)}</span><small>{rate(tot)}% of billed</small></div>
+            {tot.concession > 0 && <div className="fbk-kpi"><b>Concession</b><span style={{ color: '#7a4d00' }}>₹{fmt(tot.concession)}</span><small>{tot.withConcession} student{tot.withConcession === 1 ? '' : 's'} · not in billed</small></div>}
             <div className="fbk-kpi"><b>Outstanding</b><span style={{ color: tot.due ? '#b42318' : '#146c3a' }}>₹{fmt(tot.due)}</span><small>{tot.withDues} student{tot.withDues === 1 ? '' : 's'} with dues</small></div>
           </div>
 
@@ -161,15 +162,15 @@ export default function FeeCourseLedger({ students }) {
               <table aria-label="Course-wise fee ledger">
                 <thead><tr>
                   <th>#</th><th>Student</th><th>Batch</th><th>Hostel</th>
-                  <th className="num">Billed</th><th className="num">Paid</th><th className="num">Due</th><th>Status</th><th>Due for</th>
+                  <th className="num">Billed</th><th className="num" title="Approved concession / special fee, already taken off Billed">Concession</th><th className="num">Paid</th><th className="num">Due</th><th>Status</th><th>Due for</th>
                 </tr></thead>
                 <tbody>
-                  {shown.length === 0 && <tr><td className="fbk-empty" colSpan={9}>No students match these filters.</td></tr>}
+                  {shown.length === 0 && <tr><td className="fbk-empty" colSpan={10}>No students match these filters.</td></tr>}
                   {groups.map(g => [
                     (f.course === 'All' || groups.length > 1) && (
                       <tr key={`g-${g.course}`} className="fcl-grp">
                         <td colSpan={4}>{g.course} · {g.rows.length} student{g.rows.length === 1 ? '' : 's'}</td>
-                        <td className="num">{fmt(g.total.billed)}</td><td className="num" style={{ color: '#146c3a' }}>{fmt(g.total.paid)}</td>
+                        <td className="num">{fmt(g.total.billed)}</td><td className="num" style={{ color: '#7a4d00' }}>{g.total.concession ? fmt(g.total.concession) : '—'}</td><td className="num" style={{ color: '#146c3a' }}>{fmt(g.total.paid)}</td>
                         <td className="num" style={{ color: g.total.due ? '#b42318' : '#146c3a' }}>{fmt(g.total.due)}</td><td colSpan={2}>{rate(g.total)}% collected</td>
                       </tr>
                     ),
@@ -180,6 +181,7 @@ export default function FeeCourseLedger({ students }) {
                         <td>{x.student.batch || '—'}</td>
                         <td>{x.student.hostel_type || '—'}</td>
                         <td className="num">{fmt(v.billed)}</td>
+                        <td className="num" style={{ color: '#7a4d00' }}>{v.concession ? fmt(v.concession) : '—'}</td>
                         <td className="num" style={{ color: '#146c3a', fontWeight: 700 }}>{fmt(v.paid)}</td>
                         <td className="num" style={{ color: v.due ? '#b42318' : '#146c3a', fontWeight: 800 }}>{fmt(v.due)}</td>
                         <td><span className={`fbk-cell ${STATUS_CELL[v.status]}`}>{STATUS_LABEL[v.status]}</span></td>
@@ -191,7 +193,7 @@ export default function FeeCourseLedger({ students }) {
                 {shown.length > 0 && (
                   <tfoot><tr>
                     <td colSpan={4}>Total — {shown.length} student{shown.length === 1 ? '' : 's'}</td>
-                    <td className="num">{fmt(tot.billed)}</td><td className="num" style={{ color: '#146c3a' }}>{fmt(tot.paid)}</td>
+                    <td className="num">{fmt(tot.billed)}</td><td className="num" style={{ color: '#7a4d00' }}>{tot.concession ? fmt(tot.concession) : '—'}</td><td className="num" style={{ color: '#146c3a' }}>{fmt(tot.paid)}</td>
                     <td className="num" style={{ color: '#b42318' }}>{fmt(tot.due)}</td><td colSpan={2} />
                   </tr></tfoot>
                 )}
@@ -199,7 +201,7 @@ export default function FeeCourseLedger({ students }) {
             </div>
           </div>
           <div className="fbk-legend">
-            <span>Billed = fee charged to date (whole session incl. dues brought forward from earlier sessions), or the chosen month’s fee. Click a name to open the student’s ledger.</span>
+            <span>Billed = fee charged to date (whole session incl. dues brought forward from earlier sessions), or the chosen month’s fee, after any approved concession / special fee. Concession = the amount the concession took off. Click a name to open the student’s ledger.</span>
           </div>
         </>
       )}
