@@ -16,20 +16,26 @@ const statusOf = (billed, paid, due) => due > 0.5 ? (paid > 0 ? 'partial' : 'due
 
 // One student's figures. month = index into the April → March rows, or null for the whole session
 // (this session's dues plus earlier sessions' dues brought forward, as on the Monthly Fee Ledger).
+// Concession = approved concessions / special fees (Concession register) and approved
+// low-fee concessions on the months counted. It is NOT in billed: billed is the fee
+// actually charged after the concession, so it is shown in its own column.
+const started = r => r.status !== 'before' && (r.status !== 'upcoming' || r.paidAmt > 0)
+const r2 = n => Math.round((Number(n) || 0) * 100) / 100
 export function ledgerFigures(x, month = null) {
   if (month === null || month === undefined || month === '') {
+    const concession = r2((x.reg?.rows || []).filter(started).reduce((s, r) => s + (Number(r.waived) || 0), 0))
     const paid = Number(x.reg?.totalPaid) || 0
     const due = (Number(x.reg?.totalDue) || 0) + (Number(x.arrears) || 0)
     const billed = paid + due
     const dueMonths = netRows(x.reg).filter(r => r.due > 0).map(r => `${r.month.slice(0, 3)}${r.status === 'short' ? ' (bal.)' : ''}`)
     if (x.reg?.admission?.due > 0) dueMonths.unshift('Admission')
     if (x.arrears > 0) dueMonths.unshift('b/f')
-    return { billed, paid, due, status: statusOf(billed, paid, due), dueMonths }
+    return { billed, paid, due, concession, status: statusOf(billed, paid, due), dueMonths }
   }
   const r = netRows(x.reg)[Number(month)]
-  if (!r || r.status === 'before' || (r.status === 'upcoming' && !r.paidAmt)) return { billed: 0, paid: 0, due: 0, status: 'na', dueMonths: [] }
-  const billed = r.expected, paid = r.paidAmt, due = r.due
-  return { billed, paid, due, status: statusOf(billed, paid, due), dueMonths: due > 0 ? [`${r.month.slice(0, 3)}${r.status === 'short' ? ' (bal.)' : ''}`] : [] }
+  if (!r || r.status === 'before' || (r.status === 'upcoming' && !r.paidAmt)) return { billed: 0, paid: 0, due: 0, concession: 0, status: 'na', dueMonths: [] }
+  const billed = r.expected, paid = r.paidAmt, due = r.due, concession = r2(r.waived)
+  return { billed, paid, due, concession, status: statusOf(billed, paid, due), dueMonths: due > 0 ? [`${r.month.slice(0, 3)}${r.status === 'short' ? ' (bal.)' : ''}`] : [] }
 }
 
 // status filter: 'all' | 'paid' | 'partial' | 'due' (nothing paid) | 'owing' (partial + unpaid)
@@ -54,13 +60,14 @@ export function courseTotals(rows) {
   const m = new Map()
   for (const row of rows) {
     const c = ledgerCourse(row.x.student)
-    if (!m.has(c)) m.set(c, { course: c, students: 0, billed: 0, paid: 0, due: 0, withDues: 0 })
+    if (!m.has(c)) m.set(c, { course: c, students: 0, billed: 0, paid: 0, due: 0, concession: 0, withConcession: 0, withDues: 0 })
     const t = m.get(c)
-    t.students++; t.billed += row.f.billed; t.paid += row.f.paid; t.due += row.f.due
+    t.students++; t.billed += row.f.billed; t.paid += row.f.paid; t.due += row.f.due; t.concession += row.f.concession || 0
+    if (row.f.concession > 0) t.withConcession++
     if (row.f.due > 0.5) t.withDues++
   }
   const rank = c => { const i = COURSE_ORDER.indexOf(c); return i < 0 ? COURSE_ORDER.length : i }
   return [...m.values()].sort((a, b) => rank(a.course) - rank(b.course) || a.course.localeCompare(b.course))
 }
 
-export const sumFigures = rows => rows.reduce((t, { f }) => ({ billed: t.billed + f.billed, paid: t.paid + f.paid, due: t.due + f.due, withDues: t.withDues + (f.due > 0.5 ? 1 : 0) }), { billed: 0, paid: 0, due: 0, withDues: 0 })
+export const sumFigures = rows => rows.reduce((t, { f }) => ({ billed: t.billed + f.billed, paid: t.paid + f.paid, due: t.due + f.due, concession: t.concession + (f.concession || 0), withConcession: t.withConcession + (f.concession > 0 ? 1 : 0), withDues: t.withDues + (f.due > 0.5 ? 1 : 0) }), { billed: 0, paid: 0, due: 0, concession: 0, withConcession: 0, withDues: 0 })

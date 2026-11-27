@@ -10,14 +10,14 @@ const b = item({ name: 'Bimal', gcc_no: 12, course: 'Sainik' }, [row('April', 'p
 const c = item({ name: 'Chen', gcc_no: 13, batch: 'Pragati' }, [row('April', 'due', 6500, 0, 6500), row('May', 'upcoming', 6500, 0, 0)], { totalPaid: 0, totalDue: 6500, arrears: 1000 })
 
 test('whole-session figures: partial, paid and unpaid, with dues brought forward', () => {
-  assert.deepEqual(ledgerFigures(a), { billed: 13000, paid: 6500, due: 6500, status: 'partial', dueMonths: ['May'] })
+  assert.deepEqual(ledgerFigures(a), { billed: 13000, paid: 6500, due: 6500, concession: 0, status: 'partial', dueMonths: ['May'] })
   assert.equal(ledgerFigures(b).status, 'paid')
   const fc = ledgerFigures(c)
   assert.equal(fc.due, 7500); assert.equal(fc.status, 'due'); assert.deepEqual(fc.dueMonths, ['b/f', 'Apr'])
 })
 
 test('one month: that month only; an upcoming month is not due yet', () => {
-  assert.deepEqual(ledgerFigures(a, 1), { billed: 6500, paid: 0, due: 6500, status: 'due', dueMonths: ['May'] })
+  assert.deepEqual(ledgerFigures(a, 1), { billed: 6500, paid: 0, due: 6500, concession: 0, status: 'due', dueMonths: ['May'] })
   assert.equal(ledgerFigures(a, 0).status, 'paid')
   assert.equal(ledgerFigures(c, 1).status, 'na')
 })
@@ -36,4 +36,13 @@ test('course totals in the standard course order', () => {
   assert.equal(ledgerCourse(a.student), 'Foundation')
   const t = courseTotals(rows)
   assert.deepEqual(t.map(x => [x.course, x.students, x.paid, x.due, x.withDues]), [['Sainik', 1, 14000, 0, 0], ['Foundation', 2, 6500, 14000, 2]])
+})
+
+test('concessions are shown apart from billed', () => {
+  const d = item({ name: 'Dev', gcc_no: 14, batch: 'Udaan' }, [{ ...row('April', 'paid', 6500, 5000, 0), waived: 1500 }, { ...row('May', 'due', 6500, 0, 5000), waived: 1500 }, { ...row('June', 'upcoming', 6500, 0, 0), waived: 1500 }], { totalPaid: 5000, totalDue: 5000 })
+  const f = ledgerFigures(d)
+  assert.deepEqual([f.billed, f.concession], [10000, 3000])
+  assert.deepEqual([ledgerFigures(d, 0).billed, ledgerFigures(d, 0).concession], [5000, 1500])
+  const t = courseTotals([{ x: d, f }])[0]
+  assert.deepEqual([t.concession, t.withConcession], [3000, 1])
 })

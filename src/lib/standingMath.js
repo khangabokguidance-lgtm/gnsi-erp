@@ -20,6 +20,7 @@ export function standingWaiver(entries, month, year, head, expected) {
     if (to && ms > to) continue
     const v = Number(e.value) || 0
     if (e.basis === 'percent') total += exp * Math.min(v, 100) / 100
+    else if (e.basis === 'fixed_fee') total += Math.max(0, exp - v)   // special fee: the student pays ₹v instead of the standard rate
     else if (e.basis === 'one_time') { if (from && ms.getFullYear() === from.getFullYear() && ms.getMonth() === from.getMonth()) total += v }
     else total += v   // fixed_per_month
   }
