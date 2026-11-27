@@ -109,11 +109,11 @@ export default function StudentFeeAdjust({ student: studentProp, isAdmin, me = '
 
   // ── actions ──────────────────────────────────────────────────────────────────
   const applyHostel = () => run(async () => {
-    await changeHostelTypeRange({ student: stu, toType: hTo, from: hFrom, until: hUntil, reason: note.trim() || 'Fee adjustment', by: me, changes: hostelChanges })
+    await changeHostelTypeRange({ student: stu, toType: hTo, from: hFrom, until: hUntil, reason: note.trim(), by: me, changes: hostelChanges })
   }, hUntil ? `${stu.name} is a ${hTo} from ${keyLabel(hFrom.slice(0, 7))} to ${keyLabel(hUntil.slice(0, 7))}, then back to ${curType}.` : `${stu.name} is now a ${hTo} from ${keyLabel(hFrom.slice(0, 7))} — earlier months unchanged.`,
   hUntil ? null : { hostel_type: hTo })
   const applyCourse = () => run(async () => {
-    await changeCourse({ student: stu, toCourse: cCourse, toBatch: cBatch || stu.batch || '', effectiveFrom: cFrom, reason: note.trim() || 'Fee adjustment', by: me, changes: courseChanges })
+    await changeCourse({ student: stu, toCourse: cCourse, toBatch: cBatch || stu.batch || '', effectiveFrom: cFrom, reason: note.trim(), by: me, changes: courseChanges })
   }, `${stu.name} moves to ${cCourse}${cBatch ? ' · ' + cBatch : ''} from ${keyLabel(cFrom.slice(0, 7))} — earlier months stay at the old course's rates.`, { course: cCourse, batch: cBatch || stu.batch || '' })
   const applyDiscount = () => run(async () => {
     await addDiscount({ student: stu, monthKeys: [...sel], basis: dBasis, value: dValue, appliesTo: dApplies, ...reasonArgs, by: me })
@@ -121,8 +121,10 @@ export default function StudentFeeAdjust({ student: studentProp, isAdmin, me = '
   const applyWaiver = () => run(async () => {
     await addWaiver({ student: stu, items: selectedRows.map(r => ({ key: r.key, amount: wAmt[r.key] ?? r.due })), ...reasonArgs, kind: reason || 'Financial hardship', by: me })
   }, `Due waived for ${selectedRows.length} month${selectedRows.length === 1 ? '' : 's'}.`)
-  const undoHostel = () => run(async () => { await undoLastChange({ student: stu, changes: hostelChanges, by: me }) }, 'Last hostel type change undone.', { hostel_type: hostelChanges[hostelChanges.length - 1]?.from_type })
-  const undoCourse = () => run(async () => { const back = await undoLastCourseChange({ student: stu, changes: courseChanges, by: me }); if (back) setStu(s => ({ ...s, ...back })) }, 'Last course change undone.')
+  const askUndoReason = what => { const why = window.prompt(`Undo the last ${what} change? Months from that change go back to the earlier rate.\n\nWhy? (required)`, ''); return why && why.trim().length >= 3 ? why.trim() : null }
+  const undoHostel = () => { const why = askUndoReason('hostel type'); if (!why) return; run(async () => { await undoLastChange({ student: stu, changes: hostelChanges, by: me, reason: why }) }, 'Last hostel type change undone.', { hostel_type: hostelChanges[hostelChanges.length - 1]?.from_type }) }
+  const undoCourse = () => { const why = askUndoReason('course'); if (!why) return; run(async () => { const back = await undoLastCourseChange({ student: stu, changes: courseChanges, by: me, reason: why }); if (back) setStu(s => ({ ...s, ...back })) }, 'Last course change undone.') }
+  const noteOk = note.trim().length >= 3
   const removeEntry = e => {
     const why = window.prompt(`Remove this ${e.basis === 'one_time' ? 'waiver' : 'discount'} (${e.reason})?\n\nThe month's fee goes back to what it was. Why?`, '')
     if (why === null) return
@@ -200,10 +202,10 @@ export default function StudentFeeAdjust({ student: studentProp, isAdmin, me = '
               <div><label style={lbl}>New hostel type</label><select style={field} value={hTo} onChange={e => setHTo(e.target.value)} aria-label="New hostel type"><option value="">— Choose —</option>{HOSTEL_TYPE_LIST.filter(t => t !== curType).map(t => <option key={t}>{t}</option>)}</select></div>
               <div><label style={lbl}>From month</label><select style={field} value={hFrom} onChange={e => setHFrom(e.target.value)} aria-label="From month"><option value="">— Choose —</option>{monthOptions}</select></div>
               <div><label style={lbl}>Until month (optional)</label><select style={field} value={hUntil} onChange={e => setHUntil(e.target.value)} aria-label="Until month"><option value="">Onward (no end)</option>{monthOptions}</select></div>
-              <div><label style={lbl}>Reason / note</label><input style={field} value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Left the hostel" aria-label="Reason" /></div>
+              <div><label style={lbl}>Reason (required)</label><input style={{ ...field, borderColor: noteOk ? C.line : C.bad }} value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Left the hostel" aria-label="Reason" /></div>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <button type="button" style={go(busy || !hTo || !hFrom || !isAdmin)} disabled={busy || !hTo || !hFrom || !isAdmin} onClick={applyHostel}>{busy ? 'Saving…' : 'Save hostel type change'}</button>
+              <button type="button" style={go(busy || !hTo || !hFrom || !noteOk || !isAdmin)} disabled={busy || !hTo || !hFrom || !noteOk || !isAdmin} onClick={applyHostel}>{busy ? 'Saving…' : 'Save hostel type change'}</button>
               {hostelChanges.length > 0 && <button type="button" style={{ ...ghost, color: C.bad, marginLeft: 'auto' }} disabled={busy || !isAdmin} onClick={undoHostel}>↶ Undo last ({hostelChanges[hostelChanges.length - 1].to_type} from {String(hostelChanges[hostelChanges.length - 1].effective_from).slice(0, 7)})</button>}
             </div>
           </>)}
@@ -214,13 +216,13 @@ export default function StudentFeeAdjust({ student: studentProp, isAdmin, me = '
               <div><label style={lbl}>New course</label><select style={field} value={cCourse} onChange={e => { setCCourse(e.target.value); setCBatch('') }} aria-label="New course"><option value="">— Choose —</option>{courses.map(c => <option key={c}>{c}</option>)}</select></div>
               <div><label style={lbl}>New batch</label><select style={field} value={cBatch} onChange={e => setCBatch(e.target.value)} aria-label="New batch" disabled={!cCourse}><option value="">{batches.length ? '— Choose —' : 'Keep current batch'}</option>{batches.map(b => <option key={b}>{b}</option>)}</select></div>
               <div><label style={lbl}>Starts from month</label><select style={field} value={cFrom} onChange={e => setCFrom(e.target.value)} aria-label="Course change from month"><option value="">— Choose —</option>{monthOptions}</select></div>
-              <div><label style={lbl}>Reason / note</label><input style={field} value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Shifted to Class 7" aria-label="Reason" /></div>
+              <div><label style={lbl}>Reason (required)</label><input style={{ ...field, borderColor: noteOk ? C.line : C.bad }} value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Shifted to Class 7" aria-label="Reason" /></div>
             </div>
             {cPreview && <div style={{ marginTop: 10, fontSize: 12.5, background: '#fff', border: `1px dashed ${C.gold}`, borderRadius: 10, padding: '9px 12px' }}>
               At {curType}: course fee {inr(cPreview.now.courseFee)} → <b>{inr(cPreview.next.courseFee)}</b>/month · flat fee {inr(cPreview.now.flatFee)} → <b>{inr(cPreview.next.flatFee)}</b>/month{cPreview.next.usingFallbackRates ? <span style={{ color: C.bad }}> · ⚠ this course/batch isn't set up in Fee Setup yet</span> : ''}
             </div>}
             <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-              <button type="button" style={go(busy || !cCourse || !cFrom || !isAdmin)} disabled={busy || !cCourse || !cFrom || !isAdmin} onClick={applyCourse}>{busy ? 'Saving…' : 'Save course change'}</button>
+              <button type="button" style={go(busy || !cCourse || !cFrom || !noteOk || !isAdmin)} disabled={busy || !cCourse || !cFrom || !noteOk || !isAdmin} onClick={applyCourse}>{busy ? 'Saving…' : 'Save course change'}</button>
               {courseChanges.length > 0 && <button type="button" style={{ ...ghost, color: C.bad, marginLeft: 'auto' }} disabled={busy || !isAdmin} onClick={undoCourse}>↶ Undo last ({courseChanges[courseChanges.length - 1].to_course} from {String(courseChanges[courseChanges.length - 1].effective_from).slice(0, 7)})</button>}
             </div>
           </>)}

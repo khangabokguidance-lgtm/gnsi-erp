@@ -70,10 +70,11 @@ export async function fixHostelType(student, newType, by, reason = 'Corrected to
     created_at: new Date().toISOString(),
   })
   if (aErr) throw new Error('Could not save the audit record, so nothing was changed: ' + aErr.message)
+  // A correction means the type was wrong all along — it applies to every month.
+  // Cleared first, so a refusal (not admin, no reason) changes nothing.
+  await clearHistory(student.gcc_no, { reason, by })
   const { error } = await supabase.from('students').update({ hostel_type: newType }).eq('id', student.id)
   if (error) throw new Error(error.message)
-  // A correction means the type was wrong all along — it applies to every month.
-  await clearHistory(student.gcc_no)
 }
 
 // Audit trail for an admin collecting despite a hostel issue.

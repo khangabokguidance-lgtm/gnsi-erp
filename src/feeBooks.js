@@ -227,3 +227,31 @@ export function presetRange(key, now = new Date()) {
   return null
 }
 export const shiftDay = (isoDate, n) => { const [y, m, dd] = isoDate.split('-').map(Number); return localISO(new Date(y, m - 1, dd + n)) }
+
+// ── Course-wise Fee Ledger ──────────────────────────────────────────────────
+// groups: [{ course, rows: [{ x, f }], total: { billed, paid, due } }] — f from lib/courseLedger.js.
+const COURSE_STATUS = { paid: ['P', 'Paid'], partial: ['S', 'Partial'], due: ['D', 'Unpaid'], na: ['U', '—'] }
+export function printCourseLedger(groups, session, { period = 'Whole session', scope = '' } = {}) {
+  let n = 0
+  const all = groups.flatMap(g => g.rows)
+  const sum = k => all.reduce((s, { f }) => s + f[k], 0)
+  const body = groups.map(g => `<tr class="sub"><td colspan="5"><b>${escH(g.course)}</b> · ${g.rows.length} student${g.rows.length === 1 ? '' : 's'}</td><td class="num">${fmt(g.total.billed)}</td><td class="num P">${fmt(g.total.paid)}</td><td class="num D">${fmt(g.total.due)}</td><td colspan="2"></td></tr>` +
+    g.rows.map(({ x, f }) => `<tr><td>${++n}</td><td>${escH(x.student.name)}</td><td>${escH(x.student.gcc_no)}</td><td>${escH(x.student.batch || '—')}</td><td>${escH(x.student.hostel_type || '—')}</td><td class="num">${fmt(f.billed)}</td><td class="num P">${fmt(f.paid)}</td><td class="num ${f.due ? 'D' : 'P'}">${fmt(f.due)}</td><td class="${COURSE_STATUS[f.status][0]}">${COURSE_STATUS[f.status][1]}</td><td>${escH(f.dueMonths.join(', ') || '—')}</td></tr>`).join('')).join('')
+  openDoc(`Course-wise Fee Ledger ${shortSession(session)}`, `<div class="inst">${instNameHTML()} · Course-wise Fee Ledger</div><h1>Course-wise Fee Ledger — Session ${escH(shortSession(session))} · ${escH(period)}${scope ? ' · ' + escH(scope) : ''}</h1>
+  <table><thead><tr><th>#</th><th>Student</th><th>GCC</th><th>Batch</th><th>Hostel</th><th class="num">Billed ₹</th><th class="num">Paid ₹</th><th class="num">Due ₹</th><th>Status</th><th>Due for</th></tr></thead><tbody>${body || '<tr><td colspan="10">No students match these filters.</td></tr>'}</tbody>
+  <tfoot><tr><td colspan="5">Total — ${all.length} student${all.length === 1 ? '' : 's'}</td><td class="num">${fmt(sum('billed'))}</td><td class="num P">${fmt(sum('paid'))}</td><td class="num D">${fmt(sum('due'))}</td><td colspan="2"></td></tr></tfoot></table>
+  <div class="sig"><span>Printed ${escH(new Date().toLocaleString('en-IN'))}</span><div>Accounts Office</div></div>`)
+}
+
+export const exportCourseLedgerExcel = (groups, session, period = 'Whole session') => saveWorkbook(wb => {
+  const sm = wb.addWorksheet('By course')
+  sm.addRow([`Course-wise Fee Ledger — Session ${shortSession(session)} · ${period}`]).font = { bold: true, size: 13 }; sm.addRow([])
+  styleHeader(sm.addRow(['Course', 'Students', 'With dues', 'Billed', 'Paid', 'Due', 'Collection %']))
+  groups.forEach(g => sm.addRow([g.course, g.rows.length, g.total.withDues, g.total.billed, g.total.paid, g.total.due, g.total.billed ? Math.round((g.total.paid / g.total.billed) * 100) : 100]))
+  ;[22, 10, 10, 14, 14, 14, 12].forEach((w, i) => { sm.getColumn(i + 1).width = w }); [4, 5, 6].forEach(c => { sm.getColumn(c).numFmt = '#,##0' })
+  const ws = wb.addWorksheet('Students')
+  styleHeader(ws.addRow(['Course', 'GCC', 'Student', 'Batch', 'Hostel', 'Billed', 'Paid', 'Due', 'Status', 'Due for']))
+  groups.forEach(g => g.rows.forEach(({ x, f }) => ws.addRow([g.course, Number(x.student.gcc_no) || x.student.gcc_no, x.student.name, x.student.batch || '', x.student.hostel_type || '', f.billed, f.paid, f.due, COURSE_STATUS[f.status][1], f.dueMonths.join(', ')])))
+  ;[18, 8, 24, 14, 10, 12, 12, 12, 10, 30].forEach((w, i) => { ws.getColumn(i + 1).width = w }); [6, 7, 8].forEach(c => { ws.getColumn(c).numFmt = '#,##0' })
+  ws.views = [{ state: 'frozen', ySplit: 1 }]
+}, `Course-wise-Fee-Ledger-${shortSession(session)}.xlsx`)

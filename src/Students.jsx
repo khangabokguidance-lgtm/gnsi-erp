@@ -18,6 +18,8 @@ import { getActiveStudents, getAllStudents } from './studentQueries'
 import { compressImage, sizeNote } from './lib/imageCompress'
 import { allocateStudent, vacateStudent, bulkAllocateStudents } from './hostelAllocation'
 import { isAdminRole } from './roles'
+import { requestChange, decideRequest } from './courseModeRpc'
+import { sessionMonths, monthLabel } from './lib/courseModeChange'
 import { confirmFeeMonthOpen } from './monthLock'
 import { courseOf, batchOf, canonicalBatch, isStandardBatch, courseStructure, handoffToAttendance, takeStudentsHandoff, handoffToAdmissions, handoffToFees } from './courseMap'
 import { openStudentLedger } from './ledgerLink'
@@ -901,6 +903,7 @@ function usePermissions() {
       attend:  isAdm || ['admin','manager','teacher','hostel','Admin','Manager','Teacher','Hostel'].includes(role),
       export:  isAdm || ['admin','manager','accounts','Admin','Manager','Accounts'].includes(role),
       viewPII: isAdm || ['admin','manager','Admin','Manager'].includes(role), // ← phone, father, address
+      admin:   isAdm,
       view:    true,
     }
   }
@@ -3060,7 +3063,7 @@ function PhotoField({ currentUrl, value, onChange }) {
   )
 }
 
-function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
+function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions, can = {} }) {
   const blank={name:'',gcc_no:'',dob:'',gender:'Male',district:'',caste:'',course:'',batch:'',house:'',session:'',hostel_type:'Day Scholar',status:'Active',father_name:'',mother_name:'',phone:'',address:'',remarks:'',fee_waiver:0,scholarship:0,fee_waiver_note:'',emergency_contact:'',prev_school:'',referral_source:'',admission_date:new Date().toISOString().slice(0,10),left_date:'',medical_notes:'',academic_remarks:''}
   const loadDraft=()=>{if(editing)return null;try{const r=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null');if(!r)return null;DRAFT_PII_FIELDS.forEach(k=>delete r[k]);return r}catch{return null}}
   const savedDraft=loadDraft()
@@ -3137,10 +3140,20 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
     return ()=>{cancelled=true}
   },[form.session, form.course, form.batch, derived, form.gcc_no])
   const effectiveDue=Math.max(0,baseRate-Number(form.fee_waiver||0)-Number(form.scholarship||0))
+  // A course / batch / hostel type change on an existing student affects fees. Saved
+  // straight onto the record it would re-price EVERY month of the session (paid months
+  // too), so the form asks: a change from a month (midway → sent for admin approval) or
+  // a correction (it was wrong from the start → admin only).
+  const orig=editing?stdStudent(editing):null
+  const finalBatch=form.course==='Combined Course'?'—':form.batch
+  const modeChanged=!!orig&&((form.course||'')!==(orig.course||'')||(finalBatch||'')!==(orig.batch||'')||derived!==(orig.hostel_type||'Day Scholar'))
+  const [cm,setCm]=useState({how:'month',from:'',reason:''})
+  const cmMonths=useMemo(()=>sessionMonths(getSessionYear()),[])
   const hostelCfg=HOSTEL_CFG[derived]||HOSTEL_CFG['Day Scholar']
 
   const validate=()=>{const e={};if(!form.name?.trim())e.name='Name is required';if(!form.gcc_no?.toString().trim())e.gcc_no='GCC No. required';if(gccDup)e.gcc_no=`GCC ${form.gcc_no} used by ${gccDup.name}`;if(phoneDup)e.phone=`Phone used by ${phoneDup.name}`;if(form.status==='Active'||!form.status){if(!form.course)e.course='Choose a course';else if(form.course!=='Combined Course'&&!form.batch)e.batch='Choose a batch — a student with no batch is listed as Combined in Exams'};setErrors(e);return!Object.keys(e).length}
-  const handleSave=async()=>{if(!validate())return;setSaving(true);await onSave(editing?.id||null,{...form,batch:form.course==='Combined Course'?'—':form.batch,hostel_type:derived},photo?.file||null);setSaving(false);if(!editing)localStorage.removeItem(DRAFT_KEY)}
+  const cmError=!modeChanged?'':cm.how==='month'&&!cm.from?'Choose the month the change starts':String(cm.reason||'').trim().length<3?'Give a reason for the course / hostel type change':''
+  const handleSave=async()=>{if(!validate())return;if(cmError){setErrors(v=>({...v,courseMode:cmError}));return};setSaving(true);await onSave(editing?.id||null,{...form,batch:finalBatch,hostel_type:derived,...(modeChanged?{_courseMode:{...cm,reason:cm.reason.trim(),orig:{course:orig.course||'',batch:orig.batch||'',hostel_type:orig.hostel_type||'Day Scholar'}}}:{})},photo?.file||null);setSaving(false);if(!editing)localStorage.removeItem(DRAFT_KEY)}
 
   const INP={width:'100%',padding:'9px 12px',borderRadius:T.r8,border:`1px solid ${T.border2}`,fontSize:14,background:T.surface,color:T.text1,height:42,fontFamily:'inherit',boxSizing:'border-box',outline:'none'}
   const INP_ERR={...INP,borderColor:T.red}
@@ -3199,6 +3212,18 @@ function StudentForm({ onSave, onCancel, editing, allStudents, houseOptions }) {
         <div style={{display:'inline-flex',alignItems:'center',gap:8,marginBottom:14,padding:'8px 14px',borderRadius:T.r8,background:hostelCfg.bg,border:`1px solid ${hostelCfg.border}`,fontSize:12,fontWeight:600,color:hostelCfg.color}}>
           {derived} · Flat fee ₹{fmt(baseRate)}/mo · Course fee ₹{fmt(courseFeeRate)}/mo
         </div>
+        {modeChanged&&(
+          <div style={{border:`1px solid ${errors.courseMode?T.red:T.amberBorder||'#f0d9a8'}`,background:T.amberLight||'#fff8e6',borderRadius:T.r8,padding:'12px 14px',marginBottom:14,fontSize:13,color:T.text2}}>
+            <div style={{fontWeight:700,marginBottom:6}}>Course / hostel type changed: {[(orig.hostel_type||'Day Scholar')!==derived&&`${orig.hostel_type||'Day Scholar'} → ${derived}`,((form.course||'')!==(orig.course||'')||(finalBatch||'')!==(orig.batch||''))&&`${[orig.course,orig.batch].filter(Boolean).join(' · ')||'—'} → ${[form.course,finalBatch].filter(Boolean).join(' · ')}`].filter(Boolean).join(', ')}</div>
+            <label style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:4,cursor:'pointer'}}><input type="radio" checked={cm.how==='month'} onChange={()=>setCm(c=>({...c,how:'month'}))}/><span><b>It changes from a month</b> (midway). Earlier months keep their fees. {can.admin?'Applied now, with an approval form to print.':'Sent to an admin for approval; the course / hostel type stays as it is until approved.'}</span></label>
+            <label style={{display:'flex',gap:8,alignItems:'flex-start',cursor:can.admin?'pointer':'not-allowed',opacity:can.admin?1:.55}}><input type="radio" disabled={!can.admin} checked={cm.how==='correction'} onChange={()=>setCm(c=>({...c,how:'correction'}))}/><span><b>Correction</b>: it was wrong from the start, so every month is re-priced (admin only).</span></label>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:10,marginTop:8}}>
+              {cm.how==='month'&&<FieldRow label="Starts from month"><select style={SEL} value={cm.from} onChange={e=>{setCm(c=>({...c,from:e.target.value}));setErrors(v=>({...v,courseMode:''}))}}><option value="">— Choose —</option>{cmMonths.map(m=><option key={m.value} value={m.value}>{m.label}</option>)}</select></FieldRow>}
+              <div style={{gridColumn:'span 2'}}><FieldRow label="Reason (required)"><input style={INP} value={cm.reason} onChange={e=>{setCm(c=>({...c,reason:e.target.value}));setErrors(v=>({...v,courseMode:''}))}} placeholder="e.g. Left the hostel"/></FieldRow></div>
+            </div>
+            {errors.courseMode&&<div style={{color:T.red,fontSize:12,fontWeight:600,marginTop:4}}>{errors.courseMode}</div>}
+          </div>
+        )}
 
         <Divider label="Fee Adjustments"/>
         <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(160px,1fr))',gap:12,marginBottom:14}}>
@@ -5460,6 +5485,11 @@ const effectiveCols = visibleCols.filter(col => {
     // GCC No. is the key Admissions and every fee table use — never let an edit change it.
     const original=students.find(x=>x.id===eid)
     if(original?.gcc_no!=null)payload.gcc_no=original.gcc_no
+    // Course / hostel type change from a month: keep the record as it is here and send the
+    // change through Course / Mode Change (admin approval, dated, audited) after saving.
+    const cmode=obj._courseMode||null
+    if(cmode?.how==='correction'&&!can.admin){showToast('Only an admin can correct the course or hostel type for every month',T.red);return}
+    if(cmode?.how==='month'){payload.course=cmode.orig.course||null;payload.batch=cmode.orig.batch||null;payload.hostel_type=cmode.orig.hostel_type}
     if(eid){
       const{error}=await updateStudentsRows({match:{id:eid},patch:payload})
       if(error){showToast('Update failed: '+error.message,T.red);return}
@@ -5468,7 +5498,21 @@ const effectiveCols = visibleCols.filter(col => {
         else await vacateStudent(eid)
       }catch(e){showToast('House update failed: '+(e.message||'unknown error'),T.red)}
       setStudents(prev=>prev.map(s=>s.id===eid?{...s,...payload,house:houseChosen}:s))
-      await auditLog('student_update',{student_id:eid});showToast('Student updated',T.amber)
+      await auditLog('student_update',{student_id:eid})
+      if(cmode?.how==='correction')await auditLog('course_mode_corrected',{student_id:eid,from:cmode.orig,to:{course:obj.course,batch:obj.batch,hostel_type:obj.hostel_type},reason:cmode.reason})
+      if(cmode?.how==='month'){
+        const o=cmode.orig,toType=obj.hostel_type!==o.hostel_type?obj.hostel_type:null
+        const courseCh=(obj.course||'')!==(o.course||'')||(obj.batch||'')!==(o.batch||'')
+        const by=user?.name||user?.username||role
+        try{
+          const r=await requestChange({student:{id:eid},effectiveFrom:cmode.from,reason:cmode.reason,toType,toCourse:courseCh?obj.course:null,toBatch:courseCh?obj.batch:null,by})
+          if(can.admin){
+            const res=await decideRequest({id:r.id,approve:true,note:'Approved when requested (Students form)',by})
+            setStudents(prev=>prev.map(s=>s.id===eid?{...s,course:res.course??s.course,batch:res.batch??s.batch,hostel_type:res.hostel_type??s.hostel_type}:s))
+            showToast(`Student updated · ${r.form_no} approved: changes from ${monthLabel(cmode.from)}`,T.green)
+          }else showToast(`Student updated · ${r.form_no} sent for admin approval (Fees → Course / Mode Change)`,T.amber)
+        }catch(e){showToast('Student updated, but the course / hostel type change was not saved: '+(e.message||'error'),T.red)}
+      }else showToast('Student updated',T.amber)
       broadcastStudentsUpdate({type:'update',student_id:eid,course:payload.course,class_name:payload.class_name})
       if(photoFile){
         // the form already shrank this photo; store it and show it straight away
@@ -6046,7 +6090,7 @@ const effectiveCols = visibleCols.filter(col => {
         </div>
 
         {/* Form */}
-        {formOpen&&editing&&can.write&&<StudentForm onSave={handleSave} onCancel={()=>{setFormOpen(false);setEditing(null)}} editing={editing} allStudents={students} houseOptions={houseOptions}/>}
+        {formOpen&&editing&&can.write&&<StudentForm onSave={handleSave} onCancel={()=>{setFormOpen(false);setEditing(null)}} editing={editing} allStudents={students} houseOptions={houseOptions} can={can}/>}
 
         {/* Selection bar */}
         {selected.size>0&&(

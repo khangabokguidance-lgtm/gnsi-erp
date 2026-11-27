@@ -2,6 +2,7 @@
 // See lib/courseHistory.js for the rules and supabase/migrations/20261111_student_course_history.sql.
 import { supabase } from './supabase'
 import { validateCourseChange, sortChanges } from './lib/courseHistory'
+import { rpcChange, rpcUndo, reasonError } from './courseModeRpc'
 
 export const COURSE_HISTORY_SETUP_MSG = 'Changing a course with an effective month needs the database update 20261111_student_course_history.sql — run it in Supabase (SQL editor) first.'
 const gccKey = v => String(parseInt(v) || 0)
@@ -62,7 +63,12 @@ export async function courseChangesFor(student) {
 export async function changeCourse({ student, toCourse, toBatch, effectiveFrom, reason, by, changes = [] }) {
   const err = validateCourseChange({ student, toCourse, toBatch, effectiveFrom, changes })
   if (err) throw new Error(err)
+  const rErr = reasonError(reason, 'the course change')
+  if (rErr) throw new Error(rErr)
   const newBatch = toBatch ?? student.batch ?? ''
+  // One database step (history + student + audit) when the update is run.
+  const r = await rpcChange({ student, effectiveFrom, reason, toCourse, toBatch: newBatch, by })
+  if (!r.missing) { clearCourseHistoryCache(); return { course: r.data.course ?? toCourse, batch: r.data.batch ?? newBatch } }
   const { error } = await supabase.from('student_course_history').insert({
     student_id: student.id != null ? String(student.id) : null, gcc_no: gccKey(student.gcc_no), student_name: student.name || null,
     from_course: student.course || '', to_course: toCourse, from_batch: student.batch || '', to_batch: newBatch,
@@ -84,9 +90,11 @@ export async function changeCourse({ student, toCourse, toBatch, effectiveFrom, 
 }
 
 // Undo the latest course change (admin): the student goes back to its previous course / batch.
-export async function undoLastCourseChange({ student, changes, by }) {
+export async function undoLastCourseChange({ student, changes, by, reason = 'Undo of the last course change' }) {
   const last = changes?.[changes.length - 1]
   if (!last) return null
+  const r = await rpcUndo({ student, kind: 'course', reason, by })
+  if (!r.missing) { clearCourseHistoryCache(); return { course: r.data.course ?? last.from_course, batch: r.data.batch ?? last.from_batch ?? student.batch ?? '' } }
   const { error } = await supabase.from('student_course_history').delete().eq('id', last.id)
   if (error) throw new Error(error.message)
   const { error: sErr } = await supabase.from('students').update({ course: last.from_course, batch: last.from_batch ?? student.batch ?? '' }).eq('id', student.id)
