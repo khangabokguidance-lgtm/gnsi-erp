@@ -156,7 +156,11 @@ export const rcptNo = (prefix = 'INV') => {
     String(d.getMinutes()).padStart(2, '0'),
     String(d.getSeconds()).padStart(2, '0'),
   ].join('')
-  return `${prefix}-${stamp}`
+  // Random suffix: two counters saving in the same second still get different
+  // numbers. The database also refuses one receipt number for two students
+  // (20261128_fee_loophole_fixes_2.sql).
+  const suffix = Math.floor(Math.random() * 46656).toString(36).toUpperCase().padStart(3, '0')
+  return `${prefix}-${stamp}-${suffix}`
 }
 
 // Money sanity (assertSaneAmount / assertSanePayDate) lives in lib/feeValidation.js so it can be unit-tested.

@@ -183,9 +183,15 @@ async function linkSupabaseAuth(username, password, isAdminShortcut = false) {
         }
       }
     }
-    const { data, error: linkErr } = await supabase.rpc('staff_link_auth', {
-      p_username: username.trim(), p_password: password, p_admin: isAdminShortcut,
-    })
+    // staff_claim_auth (20261128_fee_loophole_fixes_2.sql) checks the GNSI
+    // password through staff_link_auth and then ties this login to the staff
+    // row, so nobody can act as a staff member just by creating their e-mail.
+    // Before that migration has run, fall back to staff_link_auth.
+    const linkArgs = { p_username: username.trim(), p_password: password, p_admin: isAdminShortcut }
+    let { data, error: linkErr } = await supabase.rpc('staff_claim_auth', linkArgs)
+    if (linkErr && (linkErr.code === 'PGRST202' || /staff_claim_auth/i.test(linkErr.message || ''))) {
+      ({ data, error: linkErr } = await supabase.rpc('staff_link_auth', linkArgs))
+    }
     if (linkErr || !data) {
       console.warn('staff_link_auth failed:', linkErr?.message || 'not verified')
       await supabase.auth.signOut()
