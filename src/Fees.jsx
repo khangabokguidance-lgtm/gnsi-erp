@@ -67,6 +67,8 @@ import SessionRollover from './SessionRollover'
 import ReceiptVerify from './ReceiptVerify'
 import ShortFeeFixer from './ShortFeeFixer'
 import StudentFeeAdjust from './StudentFeeAdjust'
+import CourseModeChange from './CourseModeChange'
+import { countPendingRequests as countCourseModeRequests } from './courseModeRpc'
 import { loadStudentCourseHistory } from './courseHistory'
 import { courseOnMonth } from './lib/courseHistory'
 import { loadStudentHistory, loadHostelHistory, typeOnMonth, timeline as hostelTimeline, changeHostelType, undoLastChange, HOSTEL_TYPE_LIST, monthStart } from './hostelHistory'
@@ -4617,6 +4619,10 @@ export default function Fees() {
   useEffect(() => { if (isAdmin) refreshLowFeePending() }, [isAdmin, refreshLowFeePending])
   // Open hostel-type issues (record ≠ hostel bed + pending wrong-type approvals).
   const [hostelIssueCount, setHostelIssueCount] = useState(0)
+  // Course / hostel type change requests waiting for an admin.
+  const [courseModePending, setCourseModePending] = useState(0)
+  const refreshCourseModePending = useCallback(() => { countCourseModeRequests().then(setCourseModePending).catch(() => {}) }, [])
+  useEffect(() => { refreshCourseModePending() }, [refreshCourseModePending])
   const refreshHostelIssues = useCallback(() => { countHostelIssues(students).then(setHostelIssueCount).catch(() => {}) }, [students])
   useEffect(() => { if (isAdmin && students.length) refreshHostelIssues() }, [isAdmin, students.length, refreshHostelIssues])
   useEffect(() => {
@@ -4944,6 +4950,7 @@ export default function Fees() {
   const COUNTER_TOOLS = [
     { id: 'dayClose', label: 'Daily Closing',  short: 'Day Close', icon: 'daycalc',  group: 'tools' },
     { id: 'verify',   label: 'Verify Receipt', short: 'Verify',    icon: 'verifyqr', group: 'tools' },
+    { id: 'courseMode', label: 'Course / Mode Change', short: 'Course/Mode', icon: 'hostel', group: 'tools', badge: isAdmin ? courseModePending : 0 },
   ]
   const ADMIN_PANEL = !isAdmin ? [] : [
     { title: 'Overview', tiles: [
@@ -5535,6 +5542,7 @@ export default function Fees() {
       {tab === 'refunds' && isAdmin && <FeeTabShell><FeeRefunds students={students} onCollect={goCollect} onLedger={goLedger} liveRows={liveRows} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'dayClose' && <FeeTabShell><FeeDayClose adm_fee_collections={adm_fee_collections} adm_flat_fees={adm_flat_fees} adm_course_fees={adm_course_fees} isAdmin={isAdmin} currentUser={currentUser} /></FeeTabShell>}
       {tab === 'verify' && <ReceiptVerify />}
+      {tab === 'courseMode' && <FeeTabShell><CourseModeChange students={students} isAdmin={isAdmin} currentUser={currentUser} onChanged={() => { refreshCourseModePending(); refreshHostelIssues(); loadAll() }} /></FeeTabShell>}
       {tab === 'digest' && isAdmin && <FeeTabShell><FeeDigest students={students} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} /></FeeTabShell>}
       {tab === 'feeControls' && isAdmin && <FeeControls students={students} isAdmin={isAdmin} currentUser={currentUser} />}
       {tab === 'monthlyCheck' && isAdmin && <FeeTabShell><FeeMonthlyCheck students={students} adm_course_fees={adm_course_fees} adm_flat_fees={adm_flat_fees} onCollect={goCollect} onLedger={goLedger} isAdmin={isAdmin} currentUser={currentUser} onChanged={loadAll} /></FeeTabShell>}
@@ -5553,7 +5561,7 @@ export default function Fees() {
         const main = isAdmin
           ? [['dashboard', 'Home', 'dashboard'], ['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger']]
           : [['payment', 'Pay', 'card'], ['ledger', 'Ledger', 'studentfeeledger'], ['dayClose', 'Close', 'daycalc'], ['verify', 'Verify', 'verifyqr']]
-        const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0)
+        const pending = (pendingApprovalCount || 0) + (lowFeePending || 0) + (hostelIssueCount || 0) + (isAdmin ? courseModePending || 0 : 0)
         const inMain = main.some(m => m[0] === tab)
         const go = id => { setTab(id); setSearch(''); setHubOpen(false); window.scrollTo({ top: 0 }) }
         return (

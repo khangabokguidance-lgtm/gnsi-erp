@@ -13,6 +13,7 @@ import { supabase } from './supabase'
 import { getFeeRates } from './feeEngine'
 import { courseChangesFor } from './courseHistory'
 import { courseOnMonth, otherCoursesInSession, planHostelRange } from './lib/courseHistory'
+import { rpcChange, rpcUndo, rpcClearHostel, reasonError } from './courseModeRpc'
 
 export const HOSTEL_TYPE_LIST = ['Boarder', 'Day Boarder', 'Day Scholar']
 export const HISTORY_SETUP_MSG = 'Changing hostel type with an effective month needs the database update 20260930_hostel_type_history.sql — run it in Supabase (SQL editor) first.'
@@ -86,6 +87,10 @@ export async function changeHostelType({ student, toType, effectiveFrom, reason,
   if (!/^\d{4}-\d{2}-01$/.test(effectiveFrom || '')) throw new Error('Choose the month the new hostel type starts.')
   const last = changes[changes.length - 1]
   if (last && String(effectiveFrom) < String(last.effective_from).slice(0, 10)) throw new Error(`The last change took effect on ${String(last.effective_from).slice(0, 10)} — a new change can't start before it.`)
+  const rErr = reasonError(reason, 'the hostel type change')
+  if (rErr) throw new Error(rErr)
+  // One database step (history + student + admissions + audit) when the update is run.
+  if (!(await rpcChange({ student, effectiveFrom, reason, toType, by })).missing) return
   const { error } = await supabase.from('student_hostel_history').insert({
     student_id: student.id != null ? String(student.id) : null, gcc_no: gccKey(student.gcc_no), student_name: student.name || null,
     from_type: fromType, to_type: toType, effective_from: effectiveFrom, reason: reason || null, changed_by: by || null,
@@ -129,9 +134,10 @@ export async function splitHostelTypeFrom({ student, earlierType, effectiveFrom,
 }
 
 // Undo the latest change (admin): the student goes back to its from_type.
-export async function undoLastChange({ student, changes, by }) {
+export async function undoLastChange({ student, changes, by, reason = 'Undo of the last hostel type change' }) {
   const last = changes?.[changes.length - 1]
   if (!last) return
+  if (!(await rpcUndo({ student, kind: 'hostel', reason, by })).missing) return
   const { error } = await supabase.from('student_hostel_history').delete().eq('id', last.id)
   if (error) throw new Error(error.message)
   const { error: sErr } = await supabase.from('students').update({ hostel_type: last.from_type }).eq('id', student.id)
@@ -148,7 +154,8 @@ export async function undoLastChange({ student, changes, by }) {
 
 // A record CORRECTION (the type was wrong all along) replaces the whole
 // timeline: the student is that type for every month.
-export async function clearHistory(gcc) {
+export async function clearHistory(gcc, { reason = 'Hostel type corrected for every month', by = null } = {}) {
+  if (!(await rpcClearHostel({ gcc: gccKey(gcc), reason, by })).missing) return
   try { await supabase.from('student_hostel_history').delete().eq('gcc_no', gccKey(gcc)) } catch { /* table not there yet */ }
 }
 
