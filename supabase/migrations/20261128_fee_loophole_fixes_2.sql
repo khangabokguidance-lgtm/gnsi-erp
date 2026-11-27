@@ -307,11 +307,11 @@ alter table public.fee_receipt_owners enable row level security;   -- no policie
 -- First owner of each receipt number that already exists (oldest payment wins).
 insert into public.fee_receipt_owners (receipt_no, gcc)
 select distinct on (receipt_no) receipt_no, g from (
-  select receipt_no, ltrim(adm_app_id::text, '0') as g, pay_date from public.adm_fee_collections where coalesce(receipt_no, '') <> ''
-  union all select receipt_no, ltrim(adm_app_id::text, '0'), pay_date from public.adm_flat_fees where coalesce(receipt_no, '') <> ''
-  union all select receipt_no, ltrim(adm_app_id::text, '0'), pay_date from public.adm_course_fees where coalesce(receipt_no, '') <> ''
+  select receipt_no, ltrim(adm_app_id::text, '0') as g, pay_date::text as d from public.adm_fee_collections where coalesce(receipt_no, '') <> ''
+  union all select receipt_no, ltrim(adm_app_id::text, '0'), pay_date::text from public.adm_flat_fees where coalesce(receipt_no, '') <> ''
+  union all select receipt_no, ltrim(adm_app_id::text, '0'), pay_date::text from public.adm_course_fees where coalesce(receipt_no, '') <> ''
 ) x
-order by receipt_no, pay_date nulls last
+order by receipt_no, d nulls last
 on conflict (receipt_no) do nothing;
 
 create or replace function public.fee_receipt_owner_guard()
