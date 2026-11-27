@@ -1217,6 +1217,20 @@ export const rejectFeeActionRequest = async ({ requestId, rejectedBy, rejectedBy
 // migration 20261014_fee_row_notes.sql): retry once without that field instead of
 // failing the whole payment. The explanation is still kept in the Accounts entry,
 // the audit log and the low-fee request.
+// Undo a fee row this login has just saved (its Accounts entry failed).
+// The database refuses plain deletes of fee rows (20261127_fee_loophole_fixes.sql),
+// so this goes through fee_rollback_unsaved(), which only removes a row the same
+// login saved in the last 15 minutes and logs it. Before that migration has run
+// the function does not exist yet, so fall back to the old direct delete.
+async function rollbackUnsavedFeeRow(table, id) {
+  const { error } = await supabase.rpc('fee_rollback_unsaved', { p_table: table, p_id: String(id) })
+  if (!error) return
+  const missing = error.code === 'PGRST202' || (/fee_rollback_unsaved/i.test(error.message || '') && /not find|does not exist/i.test(error.message || ''))
+  if (!missing) throw new Error(error.message)
+  const { error: delErr } = await supabase.from(table).delete().eq('id', id)
+  if (delErr) throw new Error(delErr.message)
+}
+
 async function upsertDroppingMissingNote(table, row, noteKey) {
   let res = await supabase.from(table).upsert(row, { onConflict: 'id' })
   if (res.error && noteKey in row && new RegExp(noteKey).test(res.error.message || '')) {
@@ -1370,7 +1384,7 @@ export const collectFee = async ({
       await upsertAccount(accountPayload)
     } catch (err) {
       try {
-        await supabase.from(rollbackTable).delete().eq('id', rollbackId)
+        await rollbackUnsavedFeeRow(rollbackTable, rollbackId)
       } catch (rollbackErr) {
         console.error(`collectFee: rollback of ${rollbackTable} id=${rollbackId} also failed after accounts write failed`, rollbackErr)
         throw new Error(
